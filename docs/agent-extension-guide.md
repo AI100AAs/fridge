@@ -62,13 +62,13 @@ debugging, masks, hit areas, or explicitly vector-styled work. For finished
 graphics, prefer sprite sheets, generated bitmap textures, loaded PNG/WebP
 assets, or image-generated sprite bitmaps.
 
-Codex can produce sprite bitmaps when an image-generation tool is available.
-Use that path first for realistic animals, people, products, or other
-art-quality subjects. Put durable generated assets under
-`server/gizmoapp_server/static/app/assets/` and load them as sprites. In
-CodingWorkspace-hosted OpenCode turns, image generation may not yet be exposed;
-if it is unavailable, say so clearly and build an asset slot or simple stylized
-placeholder instead of faking realism with many visible primitive shapes.
+Codex can produce build-time sprite bitmaps when an image-generation tool is
+available. Use that path first for durable art assets and put the results under
+`server/gizmoapp_server/static/app/assets/`. For images generated at app
+runtime after a user action, use `server/gizmoapp_server/media.py` and follow
+`docs/course-media.md`. If neither path is available, say so clearly and build
+an asset slot or simple stylized placeholder instead of faking realism with
+many visible primitive shapes.
 
 SVG/vector graphics are best for intentionally stylized icons, diagrams,
 simple characters, and small deformable rigs. They resize cleanly, but
@@ -128,6 +128,11 @@ heavier audio libraries only when the user asks for transcription, classificatio
 or signal processing that needs them.
 
 Enable the route by adding `audio` to `deploy/features.txt`.
+
+For text-to-speech, use `synthesize_speech()` from
+`server/gizmoapp_server/media.py` instead of the microphone-analysis
+capability. Follow `docs/course-media.md`; speech synthesis does not require an
+`audio` entry in `deploy/features.txt`.
 
 When the app is embedded in CodingWorkspace, the preview iframe grants
 microphone permission policy, but the browser still requires a user gesture and

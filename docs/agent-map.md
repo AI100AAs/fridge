@@ -23,7 +23,7 @@ shell intent.
 | --- | --- |
 | Graphics, audio, search, maps, optimization, or ML | Matching section of `docs/agent-extension-guide.md`, then the matching capability module if needed |
 | AI/LLM feature | `README.md` section “Course AI Model (AI100)” and `server/gizmoapp_server/llm.py` |
-| Generated image, image editing, or speech | `README.md` section “Course Image and Speech Services” and `server/gizmoapp_server/media.py` |
+| Generated image, image editing, or speech | `docs/course-media.md`, then `server/gizmoapp_server/media.py` |
 | Architecture rationale | `docs/design-overview.md` |
 | Local setup or validation | Relevant section of `README.md` |
 | Deployment, nginx, cron, services, or server install | Relevant `README.md` deployment section and matching file under `deploy/` or `scripts/` |

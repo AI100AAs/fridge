@@ -96,5 +96,5 @@ not a student/template-derived clone:
 - File routing and skip list: `docs/agent-map.md`
 - Feature recipes: `docs/agent-extension-guide.md`
 - Architecture rationale: `docs/design-overview.md`
-- Local setup, AI helper, and deployment: `README.md`
+- Local setup, AI/media helpers, and deployment: `README.md`
 - Deployment implementation: matching files under `deploy/` and `scripts/`

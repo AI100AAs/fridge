@@ -25,6 +25,7 @@ The scaffold intentionally avoids Node and a frontend bundler. That keeps deploy
 - `docs/design-overview.md` records the intended architecture, config split, and deployment model
 - `docs/agent-map.md` is the short routing guide for coding agents so they can open only the files relevant to the current task
 - `docs/agent-extension-guide.md` gives future coding agents concrete extension rules
+- `docs/course-media.md` explains how app routes use course image generation, image editing, and speech synthesis
 - `deploy/app-shell.txt` contains git-tracked shell intent for hosted/student workspaces without using a worker-denied `*.env` path
 - `deploy/features.txt` contains git-tracked intent for optional public admin and capability routes
 - `deploy/app.env` contains git-tracked deployment settings that should reach the server only through an explicitly requested push/deploy flow
@@ -243,6 +244,10 @@ The app discovers the service through `GIZMO_MEDIA_BASE_URL`,
 `GIZMO_MEDIA_API_KEY`, and `GIZMO_MEDIA_OPERATIONS`; you do not create, store,
 or copy these values. CodingWorkspace rotates the credential when the preview
 starts and revokes it when the preview stops.
+
+See [`docs/course-media.md`](docs/course-media.md) for a complete prefix-aware
+Flask and browser recipe, available function signatures, limits, and error
+handling.
 
 Use the bundled server-side helper:
 
