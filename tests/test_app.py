@@ -182,6 +182,20 @@ class GizmoAppTestCase(unittest.TestCase):
                 self.assertNotIn("manifest.webmanifest", html)
                 self.tearDown()
 
+    def test_error_boundary_ignores_benign_resize_observer_notifications(self):
+        boot_source = (
+            Path(__file__).parents[1]
+            / "server"
+            / "gizmoapp_server"
+            / "static"
+            / "app"
+            / "boot.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("ResizeObserver loop limit exceeded", boot_source)
+        self.assertIn("ResizeObserver loop completed with undelivered notifications.", boot_source)
+        self.assertIn("event.preventDefault()", boot_source)
+
     def test_admin_is_available_only_when_enabled(self):
         app = self.make_app(enabled_features=frozenset({"admin"}))
         response = app.test_client().get("/admin/")

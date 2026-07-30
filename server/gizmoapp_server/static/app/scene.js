@@ -102,9 +102,10 @@ export class SceneRenderer {
     this.nodeSprites = [];
     this.textures = new Map([["paper", createCanvasTexture()]]);
     this.animationFrame = 0;
+    this.resizeFrame = 0;
     this.lastTimestamp = 0;
     this.pixelRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-    this.resizeObserver = new ResizeObserver(() => this.resize());
+    this.resizeObserver = new ResizeObserver(() => this.scheduleResize());
 
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerDown = this.handlePointerDown.bind(this);
@@ -122,18 +123,39 @@ export class SceneRenderer {
     this.drawFrame(performance.now(), 0);
   }
 
+  scheduleResize() {
+    if (this.resizeFrame) {
+      return;
+    }
+    this.resizeFrame = window.requestAnimationFrame(() => {
+      this.resizeFrame = 0;
+      this.resize();
+    });
+  }
+
   resize() {
     const rect = this.canvas.getBoundingClientRect();
+    const pixelWidth = Math.floor(rect.width * this.pixelRatio);
+    const pixelHeight = Math.floor(rect.height * this.pixelRatio);
+    if (
+      this.width === rect.width
+      && this.height === rect.height
+      && this.canvas.width === pixelWidth
+      && this.canvas.height === pixelHeight
+    ) {
+      return;
+    }
     this.width = rect.width;
     this.height = rect.height;
-    this.canvas.width = Math.floor(rect.width * this.pixelRatio);
-    this.canvas.height = Math.floor(rect.height * this.pixelRatio);
+    this.canvas.width = pixelWidth;
+    this.canvas.height = pixelHeight;
     this.context.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
     this.drawFrame(performance.now(), 0);
   }
 
   destroy() {
     window.cancelAnimationFrame(this.animationFrame);
+    window.cancelAnimationFrame(this.resizeFrame);
     this.resizeObserver.disconnect();
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerdown", this.handlePointerDown);

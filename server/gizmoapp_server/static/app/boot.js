@@ -6,6 +6,14 @@
     return String(error || "Unknown startup error");
   }
 
+  function isBenignResizeObserverNotification(error) {
+    const message = errorMessage(error);
+    return (
+      message === "ResizeObserver loop limit exceeded"
+      || message === "ResizeObserver loop completed with undelivered notifications."
+    );
+  }
+
   function showFatalError(error) {
     const panel = document.getElementById("app-error");
     if (!panel) {
@@ -40,6 +48,14 @@
   }
 
   window.GizmoAppRuntime = { markReady, readConfig, showFatalError };
-  window.addEventListener("error", (event) => showFatalError(event.error || event.message));
+  window.addEventListener("error", (event) => {
+    const error = event.error || event.message;
+    if (isBenignResizeObserverNotification(error)) {
+      event.preventDefault();
+      console.debug("GizmoApp ignored a benign browser resize notification.");
+      return;
+    }
+    showFatalError(error);
+  });
   window.addEventListener("unhandledrejection", (event) => showFatalError(event.reason));
 })();
