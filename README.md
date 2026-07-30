@@ -236,6 +236,49 @@ validation, and safe user-displayable `CourseLLMError` messages. Outside the
 platform those variables are unset, so AI features remain unavailable unless
 you deliberately provide a compatible endpoint through the same variables.
 
+## Course Image and Speech Services
+
+CodingWorkspace also gives each running app a workspace-scoped media credential.
+The app discovers the service through `GIZMO_MEDIA_BASE_URL`,
+`GIZMO_MEDIA_API_KEY`, and `GIZMO_MEDIA_OPERATIONS`; you do not create, store,
+or copy these values. CodingWorkspace rotates the credential when the preview
+starts and revokes it when the preview stops.
+
+Use the bundled server-side helper:
+
+```python
+from flask import Response
+
+from .media import generate_image, synthesize_speech
+
+
+@app.post("/api/generated-picture")
+def generated_picture():
+    result = generate_image("A friendly robot teaching an AI class")
+    return Response(result.data, mimetype=result.content_type)
+
+
+@app.post("/api/spoken-welcome")
+def spoken_welcome():
+    result = synthesize_speech("Welcome to our app!")
+    return Response(result.data, mimetype=result.content_type)
+```
+
+`edit_image(prompt, image_bytes)` is available for image-to-image editing.
+Images are currently 512×512 PNGs generated with Stable Diffusion 1.5; ordinary
+speech uses Kokoro and returns WAV audio. These small models run on the course's
+older Ada-cluster GPUs, so requests can take several seconds and may report
+that the worker is busy.
+
+Call these functions only from Python routes in
+`server/gizmoapp_server/`. Never put `GIZMO_MEDIA_API_KEY` in HTML, JavaScript,
+JSON responses, logs, or the database. Browser code should call your own Flask
+route, as in the examples above. Generate media only after a user action, and
+catch `CourseMediaError` when the UI needs to show a friendly retry message.
+
+Voice cloning is deliberately not granted to student apps in the initial
+service. It requires separate consent, abuse controls, and a larger model.
+
 ## Deployment Notes
 
 The commands in this section are manual deployment actions. They may install packages, use `sudo`, write outside the checkout, contact GitHub, edit nginx, reload services, or change cron. Coding agents should not run them unless the user explicitly asks for that deployment action in the current turn.
