@@ -158,15 +158,18 @@ def _json_result(status: int, content_type: str, body: bytes) -> dict[str, Any]:
 def generate_image(
     prompt: str,
     *,
+    model: str = "stable-diffusion-v1-5",
     steps: int = 20,
     seed: int | None = None,
 ) -> GeneratedMedia:
-    """Generate one 512×512 PNG using the platform's small GPU model."""
+    """Generate one 512×512 PNG using a reviewed course GPU model."""
+    if model not in {"stable-diffusion-v1-5", "lcm-sd15"}:
+        raise CourseMediaError("model must be stable-diffusion-v1-5 or lcm-sd15.")
     _require_operation("image.generate")
     status, content_type, body = _post(
         "images/generations",
         {
-            "model": "stable-diffusion-v1-5",
+            "model": model,
             "prompt": _validate_text(prompt, name="prompt", maximum=MAX_PROMPT_CHARS),
             "size": "512x512",
             "steps": _validate_steps(steps),
@@ -195,12 +198,29 @@ def edit_image(
     prompt: str,
     image: bytes | bytearray | Path,
     *,
+    model: str = "stable-diffusion-v1-5",
+    mask: bytes | bytearray | Path | None = None,
+    image_guidance_scale: float = 1.5,
     strength: float = 0.6,
     steps: int = 20,
     seed: int | None = None,
 ) -> GeneratedMedia:
-    """Edit a source image and return one 512×512 PNG."""
+    """Edit a source image and return one 512×512 PNG.
+
+    Select ``stable-diffusion-v1-5-inpainting`` and supply a black/white mask
+    to replace only white regions, or select ``instruct-pix2pix`` for
+    instruction-oriented edits.
+    """
     _require_operation("image.edit")
+    if model not in {
+        "stable-diffusion-v1-5",
+        "stable-diffusion-v1-5-inpainting",
+        "instruct-pix2pix",
+    }:
+        raise CourseMediaError(
+            "model must be stable-diffusion-v1-5, "
+            "stable-diffusion-v1-5-inpainting, or instruct-pix2pix."
+        )
     if isinstance(image, Path):
         try:
             image_data = image.read_bytes()
@@ -217,14 +237,42 @@ def edit_image(
     strength_value = float(strength)
     if not 0 < strength_value <= 1:
         raise CourseMediaError("strength must be greater than zero and at most 1.")
+    mask_data: bytes | None = None
+    if mask is not None:
+        if isinstance(mask, Path):
+            try:
+                mask_data = mask.read_bytes()
+            except OSError as exc:
+                raise CourseMediaError("The mask image could not be read.") from exc
+        elif isinstance(mask, (bytes, bytearray)):
+            mask_data = bytes(mask)
+        else:
+            raise CourseMediaError("mask must be bytes or a pathlib.Path.")
+        if not mask_data or len(mask_data) > MAX_IMAGE_BYTES:
+            raise CourseMediaError(
+                f"mask must contain between 1 byte and {MAX_IMAGE_BYTES} bytes."
+            )
+    if model == "stable-diffusion-v1-5-inpainting" and mask_data is None:
+        raise CourseMediaError("mask is required for stable-diffusion-v1-5-inpainting.")
+    if isinstance(image_guidance_scale, bool) or not isinstance(
+        image_guidance_scale, (int, float)
+    ):
+        raise CourseMediaError("image_guidance_scale must be numeric.")
+    image_guidance_value = float(image_guidance_scale)
+    if not 0 <= image_guidance_value <= 10:
+        raise CourseMediaError("image_guidance_scale must be between 0 and 10.")
 
     status, content_type, body = _post(
         "images/edits",
         {
-            "model": "stable-diffusion-v1-5",
+            "model": model,
             "prompt": _validate_text(prompt, name="prompt", maximum=MAX_PROMPT_CHARS),
             "image_base64": base64.b64encode(image_data).decode("ascii"),
+            "mask_base64": (
+                base64.b64encode(mask_data).decode("ascii") if mask_data is not None else None
+            ),
             "strength": strength_value,
+            "image_guidance_scale": image_guidance_value,
             "steps": _validate_steps(steps),
             "seed": _validate_seed(seed),
             "wait": True,
@@ -250,23 +298,30 @@ def edit_image(
 def synthesize_speech(
     text: str,
     *,
+    model: str = "kokoro-82m",
     voice: str = "af_heart",
     language: str = "a",
+    speed: float = 1.0,
 ) -> GeneratedMedia:
-    """Synthesize speech with Kokoro and return WAV audio."""
+    """Synthesize speech with the hosted Kokoro model."""
     _require_operation("audio.speech")
+    if model != "kokoro-82m":
+        raise CourseMediaError("model must be kokoro-82m.")
     text = _validate_text(text, name="text", maximum=MAX_SPEECH_CHARS)
     if not isinstance(voice, str) or not voice.strip() or len(voice) > 80:
         raise CourseMediaError("voice must be a non-empty name of at most 80 characters.")
     if not isinstance(language, str) or not language.strip() or len(language) > 16:
         raise CourseMediaError("language must be a non-empty code of at most 16 characters.")
+    if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not 0.5 <= speed <= 2:
+        raise CourseMediaError("speed must be a number between 0.5 and 2.")
     status, content_type, body = _post(
         "audio/speech",
         {
-            "model": "kokoro-82m",
+            "model": model,
             "input": text,
             "voice": voice,
             "language": language,
+            "speed": float(speed),
             "wait": True,
             "wait_seconds": int(_timeout_seconds()) - 2,
         },

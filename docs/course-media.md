@@ -7,8 +7,9 @@ in `server/gizmoapp_server/media.py`.
 Use this service when an app needs:
 
 - a generated 512×512 PNG;
-- image-to-image editing; or
-- Kokoro speech synthesis as WAV audio.
+- fast drafts or higher-quality final image generation;
+- image-to-image, mask-based, or instruction-based editing; or
+- multilingual Kokoro speech synthesis as WAV audio.
 
 The browser must call a Flask route in the app. Never call the course service
 directly from JavaScript or expose `GIZMO_MEDIA_API_KEY` in HTML, JSON, logs,
@@ -25,11 +26,18 @@ from .media import (
 )
 ```
 
-- `generate_image(prompt, steps=20, seed=None)` returns `GeneratedMedia`.
-- `edit_image(prompt, image, strength=0.6, steps=20, seed=None)` accepts image
+- `generate_image(prompt, model="stable-diffusion-v1-5", steps=20, seed=None)`
+  returns `GeneratedMedia`. Select `model="lcm-sd15"` and `steps=4` for a fast
+  draft.
+- `edit_image(prompt, image, model="stable-diffusion-v1-5", strength=0.6,
+  steps=20, seed=None)` accepts image
   bytes or a `pathlib.Path` and returns `GeneratedMedia`.
-- `synthesize_speech(text, voice="af_heart", language="a")` returns
-  `GeneratedMedia`.
+- `edit_image(..., model="stable-diffusion-v1-5-inpainting", mask=mask_bytes)`
+  changes white mask regions while preserving black regions.
+- `edit_image(..., model="instruct-pix2pix")` follows a natural-language
+  editing instruction.
+- `synthesize_speech(text, model="kokoro-82m", voice="af_heart",
+  language="a", speed=1.0)` returns `GeneratedMedia`.
 
 Read binary output from `result.data` and its MIME type from
 `result.content_type`. Image results can also include `result.job_id` and
@@ -38,6 +46,27 @@ Read binary output from `result.data` and its MIME type from
 `available_operations()` reports what CodingWorkspace granted to the running
 app. The normal grant is `image.generate`, `image.edit`, and `audio.speech`.
 Voice cloning is not enabled for student apps.
+
+## Hosted Model Choices
+
+| Task | Model | Guidance |
+| --- | --- | --- |
+| Fast image draft | `lcm-sd15` | Use 4 steps and iterate quickly. |
+| Final image | `stable-diffusion-v1-5` | Use 15–25 steps. |
+| General image variation | `stable-diffusion-v1-5` with `edit_image()` | Adjust `strength` to control how much changes. |
+| Masked replacement | `stable-diffusion-v1-5-inpainting` | Supply a same-subject black/white mask; white is edited. |
+| Instruction edit | `instruct-pix2pix` | Write a direct command such as “make the cat orange.” |
+| Fast expressive speech | `kokoro-82m` | Preferred default. |
+
+Kokoro language codes are `a` (American English), `b` (British English), `e`
+(Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j` (Japanese), `p`
+(Brazilian Portuguese), and `z` (Mandarin Chinese). Use a voice intended for
+the selected language; invalid model voice/language combinations fail safely.
+
+The authenticated platform endpoint `GET
+${GIZMO_MEDIA_BASE_URL}/models` provides the current machine-readable catalog.
+Application browser code must not call it directly because the bearer token is
+server-only.
 
 ## Add Prefix-Aware Flask Routes
 
@@ -60,6 +89,8 @@ def media_image():
     try:
         result = generate_image(
             str(payload.get("prompt", "")),
+            model=str(payload.get("model", "lcm-sd15")),
+            steps=int(payload.get("steps", 4)),
             seed=payload.get("seed"),
         )
     except CourseMediaError as exc:
@@ -75,7 +106,9 @@ def media_speech():
     try:
         result = synthesize_speech(
             str(payload.get("text", "")),
+            model=str(payload.get("model", "kokoro-82m")),
             voice=str(payload.get("voice", "af_heart")),
+            language=str(payload.get("language", "a")),
         )
     except CourseMediaError as exc:
         return jsonify({"errors": [str(exc)]}), 503
@@ -132,6 +165,11 @@ Current helper limits include:
 - speech text: 4,000 characters;
 - image steps: 1–30; and
 - source images for editing: 8 MB.
+
+All current image models return 512×512 PNGs. The older M60 GPUs have limited
+memory, so do not submit duplicate requests or assume a modern cloud-model
+latency. Keep the previous image/audio visible while a replacement is being
+generated and show a retryable busy message.
 
 Outside CodingWorkspace the media environment variables are normally absent,
 so the helper fails closed. Do not commit a real token to make local

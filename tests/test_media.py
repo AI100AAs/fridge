@@ -71,6 +71,34 @@ class CourseMediaTests(unittest.TestCase):
         self.assertEqual(wav, result.data)
         self.assertEqual("audio/wav", result.content_type)
 
+    def test_new_model_options_are_forwarded_without_exposing_credentials(self):
+        png = media.PNG_SIGNATURE + b"prototype"
+        response = {
+            "data": [{"b64_json": base64.b64encode(png).decode("ascii")}],
+        }
+        with patch.dict(
+            os.environ,
+            self.environment("image.generate"),
+            clear=True,
+        ), patch.object(
+            media,
+            "urlopen",
+            return_value=FakeResponse(json.dumps(response).encode(), "application/json"),
+        ) as mocked:
+            media.generate_image("A cat", model="lcm-sd15", steps=4)
+        payload = json.loads(mocked.call_args.args[0].data)
+        self.assertEqual("lcm-sd15", payload["model"])
+        self.assertEqual(4, payload["steps"])
+
+    def test_inpainting_requires_a_mask(self):
+        with patch.dict(os.environ, self.environment("image.edit"), clear=True):
+            with self.assertRaisesRegex(media.CourseMediaError, "mask is required"):
+                media.edit_image(
+                    "replace the center",
+                    b"source",
+                    model="stable-diffusion-v1-5-inpainting",
+                )
+
     def test_missing_or_ungranted_configuration_fails_closed(self):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(media.CourseMediaError, "GIZMO_MEDIA_OPERATIONS"):
@@ -87,6 +115,10 @@ class CourseMediaTests(unittest.TestCase):
                 media.generate_image("x" * (media.MAX_PROMPT_CHARS + 1))
             with self.assertRaises(media.CourseMediaError):
                 media.edit_image("hello", b"x" * (media.MAX_IMAGE_BYTES + 1))
+            with self.assertRaises(media.CourseMediaError):
+                media.generate_image("hello", model="sdxl")
+            with self.assertRaises(media.CourseMediaError):
+                media.synthesize_speech("hello", speed=3)
 
     def test_http_errors_do_not_leak_upstream_details(self):
         error = HTTPError(

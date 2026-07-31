@@ -269,11 +269,13 @@ def spoken_welcome():
     return Response(result.data, mimetype=result.content_type)
 ```
 
-`edit_image(prompt, image_bytes)` is available for image-to-image editing.
-Images are currently 512×512 PNGs generated with Stable Diffusion 1.5; ordinary
-speech uses Kokoro and returns WAV audio. These small models run on the course's
-older Ada-cluster GPUs, so requests can take several seconds and may report
-that the worker is busy.
+`generate_image(..., model="lcm-sd15", steps=4)` provides fast drafts.
+`edit_image()` supports ordinary image-to-image editing, mask-based SD1.5
+inpainting, and InstructPix2Pix. Speech supports multilingual Kokoro. See the
+model table and language codes in
+[`docs/course-media.md`](docs/course-media.md). Images are 512×512 PNGs and
+speech is WAV audio. These small models run on the course's older Ada cluster,
+so requests can take several seconds and may report that the worker is busy.
 
 Call these functions only from Python routes in
 `server/gizmoapp_server/`. Never put `GIZMO_MEDIA_API_KEY` in HTML, JavaScript,
