@@ -59,7 +59,7 @@ Voice cloning is not enabled for student apps.
 | Fast expressive speech | `kokoro-82m` | Preferred default. |
 
 Kokoro language codes are `a` (American English), `b` (British English), `e`
-(Spanish), `f` (French), `h` (Hindi), `i` (Italian), `j` (Japanese), `p`
+(Spanish), `f` (French), `h` (Hindi), `i` (Italian), `p`
 (Brazilian Portuguese), and `z` (Mandarin Chinese). Use a voice intended for
 the selected language; invalid model voice/language combinations fail safely.
 
