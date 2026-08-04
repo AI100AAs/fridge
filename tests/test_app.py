@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from server.gizmoapp_server import create_app
 
@@ -163,6 +165,28 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertEqual(mapping.get_json()["defaultLocation"]["label"], "UBC Vancouver")
         self.assertIn("available", ml_status.get_json())
         self.assertEqual(invalid_ml.status_code, 400)
+
+    def test_fridge_analyze_uses_llm_plan_shape(self):
+        app = self.make_app()
+        client = app.test_client()
+        response_body = (
+            '{"ingredients":["eggs","spinach"],'
+            '"recipes":[{"day":"Mon","title":"Eggs on Toast","description":"Use eggs and spinach.","time":"20 min"}],'
+            '"shoppingList":[{"name":"bread","amount":"1 loaf","checked":false}]}'
+        )
+
+        with patch("server.gizmoapp_server.api.chat", return_value=response_body) as chat:
+            response = client.post(
+                "/api/fridge/analyze",
+                data={"photo": (io.BytesIO(b"fake image bytes"), "fridge.png", "image/png")},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()["aiUsed"])
+        self.assertEqual(response.get_json()["plan"]["ingredients"], ["eggs", "spinach"])
+        self.assertGreaterEqual(chat.call_count, 1)
+        saved = client.get("/api/fridge/state").get_json()
+        self.assertEqual(saved["ingredients"], ["eggs", "spinach"])
 
     def test_response_hardening_and_request_id(self):
         app = self.make_app()

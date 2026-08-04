@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import math
 import re
 import secrets
@@ -17,13 +19,179 @@ from .capabilities.ml import run_kmeans, sklearn_status
 from .capabilities.optimization import nearest_neighbor_route
 from .capabilities.search import search_records
 from .config import scoped_path
-from .db import database_readiness, fetch_sample_nodes, get_db, insert_sample_node
+from .db import database_readiness, fetch_sample_nodes, get_app_state, get_db, insert_sample_node, set_app_state
+from .llm import CourseLLMError, chat
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 SLUG_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 MAX_LABEL_LENGTH = 120
 MAX_DESCRIPTION_LENGTH = 2_000
 MAX_SEARCH_QUERY_LENGTH = 200
+MAX_PHOTO_BYTES = 12 * 1_048_576
+PLANNER_KEY = "fridge-planner"
+
+
+def _clean_text(value: object, limit: int) -> str:
+    return str(value).strip()[:limit]
+
+
+def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
+    ingredients: list[str] = []
+    for item in seed_ingredients:
+        text = _clean_text(item, 60)
+        if text and text not in ingredients:
+            ingredients.append(text)
+
+    if not ingredients:
+        ingredients = ["eggs", "spinach", "tomatoes", "cheddar"]
+
+    core = (ingredients + ingredients[:4])[:4]
+    day_names = ["Mon", "Tue", "Wed", "Thu"]
+    recipes = [
+        {
+            "day": day_names[index],
+            "title": f"{core[index % len(core)].title()} {suffix}",
+            "description": description.format(ingredient=core[index % len(core)]),
+            "time": time,
+        }
+        for index, (suffix, description, time) in enumerate(
+            [
+                ("Breakfast Hash", "A quick skillet using {ingredient} and pantry basics.", "20 min"),
+                ("Lunch Bowl", "A flexible bowl built around {ingredient} and fresh greens.", "25 min"),
+                ("Dinner Bake", "A warm bake that stretches {ingredient} into a full meal.", "35 min"),
+                ("Snacks", "An easy snack or side that helps use up {ingredient}.", "10 min"),
+            ]
+        )
+    ]
+    shopping_list = [
+        {"name": "olive oil", "amount": "1 bottle", "checked": False},
+        {"name": "onion", "amount": "2", "checked": False},
+        {"name": "garlic", "amount": "1 bulb", "checked": False},
+        {"name": "bread", "amount": "1 loaf", "checked": False},
+    ]
+    return {
+        "ingredients": ingredients[:12],
+        "recipes": recipes[:4],
+        "shoppingList": shopping_list,
+    }
+
+
+DEFAULT_PLAN = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
+
+
+def _image_data_url(raw: bytes, mimetype: str) -> str:
+    encoded = base64.b64encode(raw).decode("ascii")
+    return f"data:{mimetype};base64,{encoded}"
+
+
+def _json_text(response_text: str) -> dict[str, Any]:
+    stripped = response_text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.split("\n", 1)[1] if "\n" in stripped else ""
+        stripped = stripped.rsplit("```", 1)[0].strip()
+    if not stripped:
+        raise ValueError("LLM response was empty.")
+    payload = json.loads(stripped)
+    if not isinstance(payload, dict):
+        raise ValueError("LLM response must be a JSON object.")
+    return payload
+
+
+def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    if "plan" in payload and isinstance(payload["plan"], dict):
+        payload = payload["plan"]
+
+    raw_ingredients = payload.get("ingredients", [])
+    if not isinstance(raw_ingredients, list):
+        raise ValueError("ingredients must be a list.")
+    ingredients: list[str] = []
+    for item in raw_ingredients:
+        if isinstance(item, dict):
+            item = item.get("name") or item.get("ingredient") or item.get("label") or ""
+        text = _clean_text(item, 60)
+        if text and text not in ingredients:
+            ingredients.append(text)
+    if not ingredients:
+        raise ValueError("ingredients must not be empty.")
+
+    raw_recipes = payload.get("recipes", [])
+    if not isinstance(raw_recipes, list):
+        raise ValueError("recipes must be a list.")
+    recipes: list[dict[str, str]] = []
+    day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    for index, recipe in enumerate(raw_recipes[:7]):
+        if not isinstance(recipe, dict):
+            continue
+        recipes.append(
+            {
+                "day": _clean_text(recipe.get("day") or day_names[index % len(day_names)], 24),
+                "title": _clean_text(recipe.get("title") or f"Recipe {index + 1}", 80),
+                "description": _clean_text(
+                    recipe.get("description") or "A practical meal based on the fridge scan.",
+                    220,
+                ),
+                "time": _clean_text(recipe.get("time") or "30 min", 24),
+            }
+        )
+    if not recipes:
+        raise ValueError("recipes must not be empty.")
+
+    raw_shopping = payload.get("shoppingList", [])
+    if not isinstance(raw_shopping, list):
+        raise ValueError("shoppingList must be a list.")
+    shopping_list: list[dict[str, Any]] = []
+    for item in raw_shopping[:12]:
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("item") or item.get("label") or ""
+            amount = item.get("amount") or item.get("quantity") or ""
+            checked = bool(item.get("checked", False))
+        else:
+            name = item
+            amount = ""
+            checked = False
+        clean_name = _clean_text(name, 80)
+        if not clean_name:
+            continue
+        shopping_list.append(
+            {
+                "name": clean_name,
+                "amount": _clean_text(amount, 40),
+                "checked": checked,
+            }
+        )
+
+    return {
+        "ingredients": ingredients[:12],
+        "recipes": recipes[:7],
+        "shoppingList": shopping_list,
+    }
+
+
+def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
+    prompt = (
+        "Read this fridge photo and return one JSON object only. "
+        "Use keys ingredients, recipes, and shoppingList. "
+        "ingredients must be a short list of visible ingredients. "
+        "recipes must be 3 to 5 practical meals using those ingredients. "
+        "shoppingList must list any missing basics as objects with name, amount, and checked false. "
+        "Do not include markdown or extra commentary."
+    )
+    response_text = chat(
+        [
+            {"role": "system", "content": "You plan meals from fridge photos and reply with JSON only."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": _image_data_url(raw, mimetype), "detail": "high"},
+                    },
+                ],
+            },
+        ]
+    )
+    return _normalize_plan(_json_text(response_text))
 
 
 def _health_payload() -> dict[str, Any]:
