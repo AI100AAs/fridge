@@ -16,6 +16,7 @@ MAX_ALLOWED_TOKENS = 4096
 DEFAULT_TIMEOUT_SECONDS = 30.0
 MAX_TIMEOUT_SECONDS = 55.0
 ALLOWED_ROLES = frozenset({"system", "user", "assistant"})
+QWEN_REQUEST_OPTIONS = {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 class CourseLLMError(RuntimeError):
@@ -115,6 +116,7 @@ def chat(messages: Sequence[dict[str, Any]], max_tokens: int = DEFAULT_MAX_TOKEN
             model=model_name(),
             messages=validated_messages,
             max_tokens=validated_max_tokens,
+            extra_body=QWEN_REQUEST_OPTIONS,
         )
     except CourseLLMError:
         raise

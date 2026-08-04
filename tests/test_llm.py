@@ -44,6 +44,7 @@ class CourseLLMTests(unittest.TestCase):
             model="course-model",
             messages=[{"role": "user", "content": "hello"}],
             max_tokens=100,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         )
 
     def test_invalid_prompts_messages_and_token_limits_are_rejected(self):

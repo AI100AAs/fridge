@@ -2,9 +2,21 @@ const state = { ingredients: [], inventory: [], recipes: [], shoppingList: [] };
 
 function apiBase() { return window.GizmoAppRuntime.readConfig().apiBase; }
 async function request(path, options = {}) {
-  const response = await fetch(`${apiBase()}${path}`, options);
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.errors?.[0] || "Something went wrong.");
+  let response;
+  try {
+    response = await fetch(`${apiBase()}${path}`, options);
+  } catch (_) {
+    throw new Error("The app could not reach its server. Check your connection and try again.");
+  }
+
+  const responseText = await response.text();
+  let payload;
+  try {
+    payload = responseText ? JSON.parse(responseText) : {};
+  } catch (_) {
+    throw new Error(`The server returned an unexpected response (${response.status}). Try again.`);
+  }
+  if (!response.ok) throw new Error(payload.errors?.[0] || `The server returned an error (${response.status}).`);
   return payload;
 }
 
