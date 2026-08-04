@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>{{ app_name }}</title>
+    <title>Fridgeful | Your week, already in the fridge</title>
     <meta name="description" content="{{ shell_description }}">
     <meta name="theme-color" content="{{ theme_color }}">
     <base href="{{ base_href }}">
@@ -13,11 +13,39 @@
   </head>
   <body class="shell-body text-shell-body">
     <div class="app-frame public-frame text-frame">
-      <main class="text-workspace" aria-label="Text workspace">
-        <section class="workspace-panel primary-panel" aria-label="Primary workspace">
-          <div class="empty-state" aria-label="Blank workspace"></div>
-        </section>
-      </main>
+        <main class="text-workspace" aria-label="Fridgeful meal planner">
+          <header class="app-topbar">
+            <a class="brand-mark" href="{{ base_href }}" aria-label="Fridgeful home">F</a>
+            <div class="brand-copy">
+              <p class="shell-kicker">WEEKLY MEAL PLANNER</p>
+              <h1>Fridgeful</h1>
+            </div>
+            <div class="app-actions"><span class="connection-indicator"><span class="status-dot"></span> Kitchen plan</span></div>
+          </header>
+          <section class="hero-copy">
+            <div><p class="eyebrow">Less waste. More dinner.</p><h2>Your fridge has a plan.</h2><p>Upload a quick photo and Fridgeful turns what you already have into a calm week of meals.</p></div>
+            <div class="week-badge"><strong id="week-count">0</strong><span>ingredients<br>ready to use</span></div>
+          </section>
+          <section class="planner-grid">
+            <section class="workspace-panel upload-card" aria-labelledby="upload-title">
+              <div class="section-heading"><div><p class="eyebrow">01 / Scan</p><h3 id="upload-title">Show me your fridge</h3></div><span class="step-pill">AI vision</span></div>
+              <form id="upload-form">
+                <label class="drop-zone" for="fridge-photo"><span class="upload-icon">↑</span><strong id="file-label">Drop a photo here</strong><span>or click to browse · JPG, PNG up to 12 MB</span><input id="fridge-photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp" required></label>
+                <div id="preview-wrap" class="preview-wrap" hidden><img id="preview-image" alt="Selected fridge preview"><button type="button" id="clear-photo" class="text-button">Remove photo</button></div>
+                <button class="primary-button" type="submit" id="scan-button"><span>Scan my fridge</span><span aria-hidden="true">→</span></button>
+              </form>
+              <p id="scan-status" class="form-status" role="status" aria-live="polite">Your photo is analyzed securely for this plan.</p>
+            </section>
+            <section class="workspace-panel ingredients-card" aria-labelledby="ingredients-title">
+              <div class="section-heading"><div><p class="eyebrow">02 / Inventory</p><h3 id="ingredients-title">What you have</h3></div><button class="text-button" id="add-ingredient" type="button">+ Add item</button></div>
+              <div id="ingredient-list" class="ingredient-list"><div class="empty-copy"><span class="empty-emoji">✦</span><p>Scan your fridge to start your ingredient list.</p></div></div>
+              <form id="ingredient-form" class="inline-form" hidden><input id="ingredient-input" type="text" maxlength="60" placeholder="e.g. chickpeas"><button class="small-button" type="submit">Add</button></form>
+            </section>
+          </section>
+          <section class="section-heading lower-heading"><div><p class="eyebrow">03 / This week</p><h3>Meals that make sense</h3></div><span id="plan-note" class="muted-label">Built around your inventory</span></section>
+          <section id="recipe-list" class="recipe-grid"><div class="empty-wide">Your personalized recipes will appear here after a scan.</div></section>
+          <section class="workspace-panel shopping-card"><div class="section-heading"><div><p class="eyebrow">04 / Don't forget</p><h3>Smart shopping list</h3></div><span id="shopping-count" class="count-label">0 items</span></div><div id="shopping-list" class="shopping-list"><span class="muted-label">We’ll only add what your recipes need.</span></div></section>
+        </main>
     </div>
     <div id="app-error" class="app-error" role="alert" aria-live="assertive" hidden></div>
 

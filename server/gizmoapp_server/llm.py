@@ -84,17 +84,21 @@ def _validate_max_tokens(max_tokens: int) -> int:
     return max_tokens
 
 
-def _validate_messages(messages: Sequence[dict[str, Any]]) -> list[dict[str, str]]:
+def _validate_messages(messages: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     if isinstance(messages, (str, bytes)) or not isinstance(messages, Sequence) or not messages:
         raise CourseLLMError("messages must be a non-empty sequence of message objects.")
 
-    validated: list[dict[str, str]] = []
+    validated: list[dict[str, Any]] = []
     for message in messages:
         if not isinstance(message, dict):
             raise CourseLLMError("each message must be an object with role and content strings.")
         role = message.get("role")
         content = message.get("content")
-        if role not in ALLOWED_ROLES or not isinstance(content, str) or not content.strip():
+        valid_text = isinstance(content, str) and bool(content.strip())
+        valid_vision = isinstance(content, list) and bool(content) and all(
+            isinstance(part, dict) and isinstance(part.get("type"), str) for part in content
+        )
+        if role not in ALLOWED_ROLES or not (valid_text or valid_vision):
             raise CourseLLMError(
                 "each message must have a system, user, or assistant role and non-empty text content."
             )

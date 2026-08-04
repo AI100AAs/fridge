@@ -176,6 +176,42 @@ def register_api_routes(app: Flask) -> None:
     def bootstrap():
         return jsonify(_bootstrap_payload())
 
+    @app.get(scoped_path(prefix, "api/fridge/state"))
+    def fridge_state():
+        return jsonify(get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN))
+
+    @app.put(scoped_path(prefix, "api/fridge/state"))
+    def update_fridge_state():
+        payload, error = _json_object()
+        if error:
+            return error
+        plan = {
+            "ingredients": [str(item).strip()[:60] for item in payload.get("ingredients", []) if str(item).strip()][:40],
+            "recipes": payload.get("recipes", [])[:7] if isinstance(payload.get("recipes", []), list) else [],
+            "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
+        }
+        set_app_state(get_db(), PLANNER_KEY, plan)
+        return jsonify(plan)
+
+    @app.post(scoped_path(prefix, "api/fridge/analyze"))
+    def analyze_fridge():
+        photo = request.files.get("photo")
+        if photo is None or not photo.filename:
+            return _error_response("Please choose a fridge photo first", 400)
+        if photo.mimetype not in {"image/jpeg", "image/png", "image/webp"}:
+            return _error_response("Please upload a JPG, PNG, or WebP image", 415)
+        raw = photo.read(MAX_PHOTO_BYTES + 1)
+        if len(raw) > MAX_PHOTO_BYTES:
+            return _error_response("That image is larger than 12 MB", 413)
+        ai_used = False
+        try:
+            plan = _vision_plan(raw, photo.mimetype)
+            ai_used = True
+        except (CourseLLMError, ValueError, json.JSONDecodeError):
+            plan = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
+        set_app_state(get_db(), PLANNER_KEY, plan)
+        return jsonify({"plan": plan, "aiUsed": ai_used})
+
     @app.get(scoped_path(prefix, "api/capabilities"))
     def capabilities():
         api_base = scoped_path(prefix, "api").rstrip("/")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import json
 import time
 from pathlib import Path
 from typing import Any
@@ -256,3 +257,22 @@ def database_summary(config: dict) -> dict[str, Any]:
         "app_event_count": event_count,
         "schema_version": current_schema_version,
     }
+
+
+def get_app_state(connection: sqlite3.Connection, key: str, default: dict[str, Any]) -> dict[str, Any]:
+    row = connection.execute("SELECT value_json FROM app_state WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        return default
+    try:
+        value = json.loads(row["value_json"])
+    except (TypeError, json.JSONDecodeError):
+        return default
+    return value if isinstance(value, dict) else default
+
+
+def set_app_state(connection: sqlite3.Connection, key: str, value: dict[str, Any]) -> None:
+    connection.execute(
+        "INSERT INTO app_state (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP",
+        (key, json.dumps(value)),
+    )
+    connection.commit()

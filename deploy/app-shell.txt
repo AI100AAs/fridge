@@ -4,4 +4,4 @@
 # shell, set this file to text or graphical. This file is intentionally not an
 # .env file so hosted workers can edit it safely.
 
-auto
+text

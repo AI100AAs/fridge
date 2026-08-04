@@ -229,7 +229,7 @@ def load_settings(shell_variant: str | None = None, repo_root: Path | None = Non
         "MAX_CONTENT_LENGTH": _parse_int(
             environ.get("GIZMOAPP_MAX_CONTENT_LENGTH"),
             name="GIZMOAPP_MAX_CONTENT_LENGTH",
-            default=1_048_576,
+            default=12 * 1_048_576,
             minimum=16_384,
             maximum=16_777_216,
         ),
