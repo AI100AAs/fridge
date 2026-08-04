@@ -82,6 +82,7 @@ def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
         "inventory": [{"name": item, "quantity": "", "category": "Fridge"} for item in ingredients[:12]],
         "recipes": recipes[:4],
         "shoppingList": shopping_list,
+        "mealPlan": {},
     }
 
 
@@ -213,12 +214,23 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
         "inventory": inventory,
         "recipes": _rank_recipes(recipes[:7], ingredients),
         "shoppingList": shopping_list,
+        "mealPlan": _normalize_meal_plan(payload.get("mealPlan")),
     }
 
 
 def _normalize_preferences(raw: object) -> dict[str, str]:
     source = raw if isinstance(raw, dict) else {}
     return {key: _clean_text(source.get(key, ""), 300) for key in DEFAULT_PREFERENCES}
+
+
+def _normalize_meal_plan(raw: object) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        _clean_text(date, 10): _clean_text(title, 80)
+        for date, title in list(raw.items())[:31]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(date)) and _clean_text(title, 80)
+    }
 
 
 def _preference_terms(value: str) -> list[str]:
@@ -426,6 +438,7 @@ def register_api_routes(app: Flask) -> None:
     def fridge_state():
         state = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
         state.setdefault("preferences", DEFAULT_PREFERENCES.copy())
+        state.setdefault("mealPlan", {})
         return jsonify(state)
 
     @app.put(scoped_path(prefix, "api/fridge/state"))
@@ -438,6 +451,7 @@ def register_api_routes(app: Flask) -> None:
             "inventory": _normalize_inventory(payload.get("inventory"), [str(item).strip() for item in payload.get("ingredients", []) if str(item).strip()][:40]),
             "recipes": payload.get("recipes", [])[:7] if isinstance(payload.get("recipes", []), list) else [],
             "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
+            "mealPlan": _normalize_meal_plan(payload.get("mealPlan")),
             "preferences": _normalize_preferences(payload.get("preferences")),
         }
         plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])

@@ -1,4 +1,4 @@
-const state = { ingredients: [], inventory: [], recipes: [], shoppingList: [], preferences: { dietaryRestrictions: "", allergies: "", preferredCuisines: "", dislikedIngredients: "", notes: "" } };
+const state = { ingredients: [], inventory: [], recipes: [], shoppingList: [], mealPlan: {}, preferences: { dietaryRestrictions: "", allergies: "", preferredCuisines: "", dislikedIngredients: "", notes: "" } };
 
 function apiBase() { return window.GizmoAppRuntime.readConfig().apiBase; }
 async function request(path, options = {}) {
@@ -36,8 +36,25 @@ function render() {
   document.querySelector("#shopping-count").textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
    const shoppingMarkup = state.shoppingList.length ? state.shoppingList.map((item, index) => `<label class="shopping-item ${item.checked ? "checked" : ""}"><input type="checkbox" data-shop="${index}" ${item.checked ? "checked" : ""}><span>${escapeHtml(item.name)}${item.amount ? ` · ${escapeHtml(item.amount)}` : ""}</span></label>`).join("") : `<span class="muted-label">We’ll only add what your recipes need.</span>`;
    shopping.innerHTML = shoppingMarkup; document.querySelector("#shopping-list-large").innerHTML = shoppingMarkup; document.querySelector("#shopping-count-large").textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
-   document.querySelectorAll("[data-shop]").forEach((input) => input.addEventListener("change", () => { state.shoppingList[Number(input.dataset.shop)].checked = input.checked; saveState(); render(); }));
+ document.querySelectorAll("[data-shop]").forEach((input) => input.addEventListener("change", () => { state.shoppingList[Number(input.dataset.shop)].checked = input.checked; saveState(); render(); }));
+   renderCalendar();
    const fields = { dietaryRestrictions: "dietary-input", allergies: "allergies-input", preferredCuisines: "cuisines-input", dislikedIngredients: "disliked-input", notes: "notes-input" }; Object.entries(fields).forEach(([key, id]) => { const field = document.getElementById(id); if (field && document.activeElement !== field) field.value = state.preferences?.[key] || ""; });
+}
+function localDateKey(date) { const year = date.getFullYear(); const month = String(date.getMonth() + 1).padStart(2, "0"); const day = String(date.getDate()).padStart(2, "0"); return `${year}-${month}-${day}`; }
+function startOfWeek(date) { const copy = new Date(date); copy.setHours(12, 0, 0, 0); copy.setDate(copy.getDate() - ((copy.getDay() + 6) % 7)); return copy; }
+function renderCalendar() {
+  const grid = document.querySelector("#calendar-grid");
+  if (!grid) return;
+  const start = startOfWeek(new Date());
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  document.querySelector("#calendar-range").textContent = `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${end.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  const options = state.recipes.length ? state.recipes.map((recipe, index) => `<option value="${index}">${escapeHtml(recipe.title)}</option>`).join("") : `<option value="">Scan your fridge first</option>`;
+  grid.innerHTML = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(start); date.setDate(start.getDate() + index);
+    const key = localDateKey(date); const assigned = state.mealPlan?.[key];
+    return `<article class="calendar-day ${localDateKey(new Date()) === key ? "today" : ""}"><div class="calendar-day-heading"><span>${date.toLocaleDateString(undefined, { weekday: "short" })}</span><strong>${date.getDate()}</strong></div><label class="calendar-select-label" for="meal-${key}">Meal</label><select id="meal-${key}" class="meal-select" data-meal-date="${key}"><option value="">No meal planned</option>${options}</select>${assigned ? `<div class="planned-meal"><span>Planned</span><strong>${escapeHtml(assigned)}</strong></div>` : `<p class="calendar-empty">Pick from your recipes</p>`}</article>`;
+  }).join("");
+  grid.querySelectorAll("[data-meal-date]").forEach((select) => { const assigned = state.mealPlan?.[select.dataset.mealDate]; select.value = assigned ? String(state.recipes.findIndex((recipe) => recipe.title === assigned)) : ""; select.addEventListener("change", () => { const recipe = state.recipes[Number(select.value)]; if (recipe) state.mealPlan[select.dataset.mealDate] = recipe.title; else delete state.mealPlan[select.dataset.mealDate]; saveState(); renderCalendar(); }); });
 }
 function escapeHtml(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
 async function saveState() { try { await request("/fridge/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) }); } catch (_) { /* local UI remains usable if persistence is briefly unavailable */ } }
@@ -54,7 +71,14 @@ function setupUpload() {
   form.addEventListener("submit", async (event) => { event.preventDefault(); const file = input.files[0]; if (!file) return; const button = document.querySelector("#scan-button"); button.disabled = true; button.firstElementChild.textContent = "Reading your fridge..."; status.textContent = "Looking for ingredients and building a week of meals."; status.className = "form-status"; const body = new FormData(); body.append("photo", file); try { const result = await request("/fridge/analyze", { method: "POST", body }); Object.assign(state, result.plan); render(); status.textContent = result.aiUsed ? "Scan complete. Your AI recipes are ready." : `Starter recipes shown. AI scan failed: ${result.fallbackReason || "check the model settings and try again."}`; status.className = result.aiUsed ? "form-status success" : "form-status error"; document.querySelector("#plan-note").textContent = result.aiUsed ? "Personalized by AI vision" : "Starter plan · AI unavailable"; } catch (error) { status.textContent = error.message; status.className = "form-status error"; } finally { button.disabled = false; button.firstElementChild.textContent = "Scan my fridge"; } });
 }
 function setupAddIngredient() { const form = document.querySelector("#ingredient-form"); document.querySelector("#add-ingredient").addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) document.querySelector("#ingredient-input").focus(); }); form.addEventListener("submit", (event) => { event.preventDefault(); const input = document.querySelector("#ingredient-input"); const quantity = document.querySelector("#quantity-input"); const value = input.value.trim(); if (value) { state.inventory.push({ name: value, quantity: quantity.value.trim(), category: "Fridge" }); state.ingredients = state.inventory.map((item) => item.name); input.value = ""; quantity.value = ""; saveState(); render(); } }); }
-function setupNavigation() { document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { const view = button.dataset.view; document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); document.querySelectorAll(".dashboard-view").forEach((panel) => panel.classList.toggle("active-view", panel.id === `${view}-view`)); })); document.querySelector("#inventory-add").addEventListener("click", () => { document.querySelector('[data-view="overview"]').click(); document.querySelector("#add-ingredient").click(); }); }
+function setupNavigation() {
+  const menu = document.querySelector("#mobile-menu"); const toggle = document.querySelector(".menu-toggle");
+  function closeMenu() { menu.hidden = true; toggle.setAttribute("aria-expanded", "false"); document.body.classList.remove("menu-open"); }
+  toggle.addEventListener("click", () => { menu.hidden = !menu.hidden; toggle.setAttribute("aria-expanded", String(!menu.hidden)); document.body.classList.toggle("menu-open", !menu.hidden); });
+  menu.querySelectorAll("[data-menu-close]").forEach((item) => item.addEventListener("click", closeMenu));
+  document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => { const view = button.dataset.view; document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === view)); document.querySelectorAll(".dashboard-view").forEach((panel) => panel.classList.toggle("active-view", panel.id === `${view}-view`)); closeMenu(); }));
+  document.querySelector("#inventory-add").addEventListener("click", () => { document.querySelector('[data-view="overview"]').click(); document.querySelector("#add-ingredient").click(); });
+}
 function setupSettings() { document.querySelector("#settings-form").addEventListener("submit", (event) => { event.preventDefault(); state.preferences = { dietaryRestrictions: document.querySelector("#dietary-input").value.trim(), allergies: document.querySelector("#allergies-input").value.trim(), preferredCuisines: document.querySelector("#cuisines-input").value.trim(), dislikedIngredients: document.querySelector("#disliked-input").value.trim(), notes: document.querySelector("#notes-input").value.trim() }; saveState(); document.querySelector("#settings-saved").textContent = "Preferences saved"; }); }
 function bootstrap() { if (!window.GizmoAppRuntime) throw new Error("The shared app runtime did not load."); window.GizmoAppRuntime.readConfig(); setupUpload(); setupAddIngredient(); setupNavigation(); setupSettings(); loadState(); window.GizmoAppRuntime.markReady(); }
 try { bootstrap(); } catch (error) { window.GizmoAppRuntime?.showFatalError(error); }
