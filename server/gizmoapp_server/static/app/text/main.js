@@ -37,9 +37,14 @@ function render() {
    document.querySelector("#inventory-list-large").innerHTML = state.inventory.length ? state.inventory.map((item, index) => `<div class="inventory-row"><span class="inventory-icon">${escapeHtml((item.name || "?").slice(0, 1).toUpperCase())}</span><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.quantity || "No amount added")}</span><button type="button" data-remove-large="${index}" aria-label="Remove ${escapeHtml(item.name)}">Remove</button></div>`).join("") : `<div class="empty-wide">Your inventory is empty. Scan your fridge or add an item.</div>`;
    document.querySelectorAll("[data-remove-large]").forEach((button) => button.addEventListener("click", () => { state.inventory.splice(Number(button.dataset.removeLarge), 1); state.ingredients = state.inventory.map((item) => item.name); saveState(); render(); }));
   const shopping = document.querySelector("#shopping-list");
-  document.querySelector("#shopping-count").textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
-   const shoppingMarkup = state.shoppingList.length ? state.shoppingList.map((item, index) => `<label class="shopping-item ${item.checked ? "checked" : ""}"><input type="checkbox" data-shop="${index}" ${item.checked ? "checked" : ""}><span>${escapeHtml(item.name)}${item.amount ? ` · ${escapeHtml(item.amount)}` : ""}</span></label>`).join("") : `<span class="muted-label">We’ll only add what your recipes need.</span>`;
-   shopping.innerHTML = shoppingMarkup; document.querySelector("#shopping-list-large").innerHTML = shoppingMarkup; document.querySelector("#shopping-count-large").textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
+  const shoppingCount = document.querySelector("#shopping-count");
+  if (shoppingCount) shoppingCount.textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
+    const shoppingMarkup = state.shoppingList.length ? state.shoppingList.map((item, index) => `<label class="shopping-item ${item.checked ? "checked" : ""}"><input type="checkbox" data-shop="${index}" ${item.checked ? "checked" : ""}><span>${escapeHtml(item.name)}${item.amount ? ` · ${escapeHtml(item.amount)}` : ""}</span></label>`).join("") : `<span class="muted-label">We’ll only add what your recipes need.</span>`;
+    if (shopping) shopping.innerHTML = shoppingMarkup;
+    const shoppingLarge = document.querySelector("#shopping-list-large");
+    if (shoppingLarge) shoppingLarge.innerHTML = shoppingMarkup;
+    const shoppingCountLarge = document.querySelector("#shopping-count-large");
+    if (shoppingCountLarge) shoppingCountLarge.textContent = `${state.shoppingList.length} item${state.shoppingList.length === 1 ? "" : "s"}`;
  document.querySelectorAll("[data-shop]").forEach((input) => input.addEventListener("change", () => { state.shoppingList[Number(input.dataset.shop)].checked = input.checked; saveState(); render(); }));
    renderCalendar();
     const fields = { dietaryRestrictions: "dietary-input", allergies: "allergies-input", preferredCuisines: "cuisines-input", dislikedIngredients: "disliked-input", servingSize: "serving-size-input", notes: "notes-input" }; Object.entries(fields).forEach(([key, id]) => { const field = document.getElementById(id); if (field && document.activeElement !== field) field.value = state.preferences?.[key] || ""; });
