@@ -35,6 +35,7 @@ DEFAULT_PREFERENCES = {
     "preferredCuisines": "",
     "dislikedIngredients": "",
     "notes": "",
+    "servingSize": "",
 }
 
 
@@ -280,6 +281,7 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
         "Each recipe should include day, title, description, time, ingredients (a list of objects with name and quantity), and steps (a list). "
         "Keep each recipe to at most 5 steps. Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
+        "Scale ingredient quantities and recipe portions for the requested serving size when provided. "
         "Do not include markdown or extra commentary. "
         f"Follow these user preferences exactly: {preference_note} "
         "Never include an allergy in a recipe, even as an optional ingredient or garnish."
@@ -315,6 +317,7 @@ def _generate_more_recipes(inventory: list[dict[str, str]], existing: list[dict[
         "Each recipe must include title, description, time, ingredients as objects with name and quantity, "
         "and steps as a list. Use the available ingredient quantities when relevant and include pantry basics "
         "in the ingredient quantities. Also include matchScore and matchedIngredients. "
+        "Scale each recipe for the requested serving size when provided. "
         f"Available inventory: {available}. User preferences: {preference_note}. No markdown."
     )
     response = _normalize_plan({
