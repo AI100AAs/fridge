@@ -73,7 +73,8 @@ function setupUpload() {
 function setupAddIngredient() { const form = document.querySelector("#ingredient-form"); document.querySelector("#add-ingredient").addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) document.querySelector("#ingredient-input").focus(); }); form.addEventListener("submit", (event) => { event.preventDefault(); const input = document.querySelector("#ingredient-input"); const quantity = document.querySelector("#quantity-input"); const value = input.value.trim(); if (value) { state.inventory.push({ name: value, quantity: quantity.value.trim(), category: "Fridge" }); state.ingredients = state.inventory.map((item) => item.name); input.value = ""; quantity.value = ""; saveState(); render(); } }); }
 function setupNavigation() {
   const menu = document.querySelector("#mobile-menu"); const toggle = document.querySelector(".menu-toggle");
-  function setMenuOpen(isOpen) { menu.classList.toggle("is-open", isOpen); menu.setAttribute("aria-hidden", String(!isOpen)); toggle.setAttribute("aria-expanded", String(isOpen)); document.body.classList.toggle("menu-open", isOpen); }
+  const closeButton = menu.querySelector(".menu-close");
+  function setMenuOpen(isOpen) { menu.classList.toggle("is-open", isOpen); menu.setAttribute("aria-hidden", String(!isOpen)); toggle.setAttribute("aria-expanded", String(isOpen)); document.body.classList.toggle("menu-open", isOpen); if (isOpen) closeButton.focus(); else toggle.focus(); }
   function closeMenu() { setMenuOpen(false); }
   toggle.addEventListener("click", () => setMenuOpen(!menu.classList.contains("is-open")));
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && menu.classList.contains("is-open")) closeMenu(); });
