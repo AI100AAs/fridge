@@ -229,6 +229,7 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
             {
                 "name": clean_name,
                 "amount": _clean_text(amount, 40),
+                "category": _clean_text(item.get("category") if isinstance(item, dict) else "Other", 40) or "Other",
                 "checked": checked,
             }
         )
