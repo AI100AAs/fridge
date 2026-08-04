@@ -39,10 +39,10 @@
             <section class="workspace-panel ingredients-card" aria-labelledby="ingredients-title">
               <div class="section-heading"><div><p class="eyebrow">02 / Inventory</p><h3 id="ingredients-title">What you have</h3></div><button class="text-button" id="add-ingredient" type="button">+ Add item</button></div>
               <div id="ingredient-list" class="ingredient-list"><div class="empty-copy"><span class="empty-emoji">✦</span><p>Scan your fridge to start your ingredient list.</p></div></div>
-              <form id="ingredient-form" class="inline-form" hidden><input id="ingredient-input" type="text" maxlength="60" placeholder="e.g. chickpeas"><button class="small-button" type="submit">Add</button></form>
+              <form id="ingredient-form" class="inline-form" hidden><input id="ingredient-input" type="text" maxlength="60" placeholder="e.g. chickpeas"><input id="quantity-input" type="text" maxlength="30" placeholder="amount"><button class="small-button" type="submit">Add</button></form>
             </section>
           </section>
-          <section class="section-heading lower-heading"><div><p class="eyebrow">03 / This week</p><h3>Meals that make sense</h3></div><span id="plan-note" class="muted-label">Built around your inventory</span></section>
+           <section class="section-heading lower-heading"><div><p class="eyebrow">03 / Ranked for tonight</p><h3>Meals that make sense</h3></div><span id="plan-note" class="muted-label">Best matches first</span></section>
           <section id="recipe-list" class="recipe-grid"><div class="empty-wide">Your personalized recipes will appear here after a scan.</div></section>
           <section class="workspace-panel shopping-card"><div class="section-heading"><div><p class="eyebrow">04 / Don't forget</p><h3>Smart shopping list</h3></div><span id="shopping-count" class="count-label">0 items</span></div><div id="shopping-list" class="shopping-list"><span class="muted-label">We’ll only add what your recipes need.</span></div></section>
         </main>

@@ -63,6 +63,7 @@ def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
             ]
         )
     ]
+    recipes = _rank_recipes(recipes, ingredients)
     shopping_list = [
         {"name": "olive oil", "amount": "1 bottle", "checked": False},
         {"name": "onion", "amount": "2", "checked": False},
@@ -71,12 +72,10 @@ def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
     ]
     return {
         "ingredients": ingredients[:12],
+        "inventory": [{"name": item, "quantity": "", "category": "Fridge"} for item in ingredients[:12]],
         "recipes": recipes[:4],
         "shoppingList": shopping_list,
     }
-
-
-DEFAULT_PLAN = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
 
 
 def _image_data_url(raw: bytes, mimetype: str) -> str:
@@ -95,6 +94,36 @@ def _json_text(response_text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("LLM response must be a JSON object.")
     return payload
+
+
+def _rank_recipes(recipes: list[dict[str, Any]], ingredients: list[str]) -> list[dict[str, Any]]:
+    available = {word for item in ingredients for word in re.findall(r"[a-z0-9]+", item.lower())}
+    ranked: list[dict[str, Any]] = []
+    for recipe in recipes:
+        haystack = " ".join(str(recipe.get(key, "")) for key in ("title", "description", "matchedIngredients"))
+        matched = sorted({item for item in ingredients if any(word in available and word in haystack.lower() for word in re.findall(r"[a-z0-9]+", item.lower()))})
+        score = round(min(98, 42 + (len(matched) / max(len(ingredients), 1)) * 56))
+        ranked.append({**recipe, "matchScore": int(recipe.get("matchScore") or score), "matchedIngredients": matched})
+    return sorted(ranked, key=lambda item: item["matchScore"], reverse=True)
+
+
+def _normalize_inventory(raw_inventory: object, ingredients: list[str]) -> list[dict[str, str]]:
+    source = raw_inventory if isinstance(raw_inventory, list) else ingredients
+    inventory: list[dict[str, str]] = []
+    for item in source[:40]:
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("ingredient") or item.get("label") or ""
+            quantity = item.get("quantity") or item.get("amount") or ""
+            category = item.get("category") or "Fridge"
+        else:
+            name, quantity, category = item, "", "Fridge"
+        clean_name = _clean_text(name, 60)
+        if clean_name and not any(existing["name"].lower() == clean_name.lower() for existing in inventory):
+            inventory.append({"name": clean_name, "quantity": _clean_text(quantity, 30), "category": _clean_text(category, 24) or "Fridge"})
+    return inventory[:40]
+
+
+DEFAULT_PLAN = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
 
 
 def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -160,9 +189,11 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    inventory = _normalize_inventory(payload.get("inventory"), ingredients)
     return {
         "ingredients": ingredients[:12],
-        "recipes": recipes[:7],
+        "inventory": inventory,
+        "recipes": _rank_recipes(recipes[:7], ingredients),
         "shoppingList": shopping_list,
     }
 
@@ -172,7 +203,8 @@ def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
         "Read this fridge photo and return one JSON object only. "
         "Use keys ingredients, recipes, and shoppingList. "
         "ingredients must be a short list of visible ingredients. "
-        "recipes must be 3 to 5 practical meals using those ingredients. "
+        "recipes must be 3 to 5 practical meals using those ingredients, ranked best first. "
+        "Each recipe should include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
         "Do not include markdown or extra commentary."
     )
@@ -355,9 +387,11 @@ def register_api_routes(app: Flask) -> None:
             return error
         plan = {
             "ingredients": [str(item).strip()[:60] for item in payload.get("ingredients", []) if str(item).strip()][:40],
+            "inventory": _normalize_inventory(payload.get("inventory"), [str(item).strip() for item in payload.get("ingredients", []) if str(item).strip()][:40]),
             "recipes": payload.get("recipes", [])[:7] if isinstance(payload.get("recipes", []), list) else [],
             "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
         }
+        plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])
         set_app_state(get_db(), PLANNER_KEY, plan)
         return jsonify(plan)
 
