@@ -61,6 +61,7 @@ def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
             "title": f"{core[index % len(core)].title()} {suffix}",
             "description": description.format(ingredient=core[index % len(core)]),
             "time": time,
+            "difficulty": ["easy", "medium", "hard", "easy"][index],
         }
         for index, (suffix, description, time) in enumerate(
             [
@@ -120,7 +121,14 @@ def _rank_recipes(recipes: list[dict[str, Any]], ingredients: list[str]) -> list
         haystack = " ".join(str(recipe.get(key, "")) for key in ("title", "description", "matchedIngredients"))
         matched = sorted({item for item in ingredients if any(word in available and word in haystack.lower() for word in re.findall(r"[a-z0-9]+", item.lower()))})
         score = round(min(98, 42 + (len(matched) / max(len(ingredients), 1)) * 56))
-        ranked.append({**recipe, "matchScore": int(recipe.get("matchScore") or score), "matchedIngredients": matched})
+        difficulty = str(recipe.get("difficulty", "medium")).strip().lower()
+        if difficulty not in {"easy", "medium", "hard"}:
+            difficulty = "medium"
+        try:
+            rating = max(0, min(5, int(recipe.get("rating") or 0)))
+        except (TypeError, ValueError):
+            rating = 0
+        ranked.append({**recipe, "matchScore": int(recipe.get("matchScore") or score), "matchedIngredients": matched, "difficulty": difficulty, "favorite": bool(recipe.get("favorite", False)), "rating": rating})
     return sorted(ranked, key=lambda item: item["matchScore"], reverse=True)
 
 
@@ -278,7 +286,7 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
         "Use keys ingredients, recipes, and shoppingList. "
         "ingredients must be a short list of visible ingredients as objects with name, quantity, and category; estimate quantity when visible and use 'unknown' when it is not. "
         "recipes must be exactly 3 practical meals using those ingredients, ranked best first. "
-        "Each recipe should include day, title, description, time, ingredients (a list of objects with name and quantity), and steps (a list). "
+        "Each recipe should include day, title, description, time, difficulty (exactly easy, medium, or hard), ingredients (a list of objects with name and quantity), and steps (a list). "
         "Keep each recipe to at most 5 steps. Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
         "Scale ingredient quantities and recipe portions for the requested serving size when provided. "
@@ -314,7 +322,7 @@ def _generate_more_recipes(inventory: list[dict[str, str]], existing: list[dict[
     prompt = (
         "Return one JSON object only with a recipes list of exactly 4 new practical recipes. "
         "Do not repeat these existing recipe titles: " + existing_titles + ". "
-        "Each recipe must include title, description, time, ingredients as objects with name and quantity, "
+        "Each recipe must include title, description, time, difficulty (exactly easy, medium, or hard), ingredients as objects with name and quantity, "
         "and steps as a list. Use the available ingredient quantities when relevant and include pantry basics "
         "in the ingredient quantities. Also include matchScore and matchedIngredients. "
         "Scale each recipe for the requested serving size when provided. "
