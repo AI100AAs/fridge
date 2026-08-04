@@ -276,9 +276,9 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
         "Read this fridge photo and return one JSON object only. "
         "Use keys ingredients, recipes, and shoppingList. "
         "ingredients must be a short list of visible ingredients as objects with name, quantity, and category; estimate quantity when visible and use 'unknown' when it is not. "
-        "recipes must be 3 to 5 practical meals using those ingredients, ranked best first. "
+        "recipes must be exactly 3 practical meals using those ingredients, ranked best first. "
         "Each recipe should include day, title, description, time, ingredients (a list of objects with name and quantity), and steps (a list). "
-        "Also include matchScore (0-100) and matchedIngredients. "
+        "Keep each recipe to at most 5 steps. Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
         "Do not include markdown or extra commentary. "
         f"Follow these user preferences exactly: {preference_note} "
@@ -297,7 +297,8 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
                     },
                 ],
             },
-        ]
+        ],
+        max_tokens=4096,
     )
     return _remove_restricted_recipes(_normalize_plan(_json_text(response_text)), preferences)
 
@@ -321,7 +322,7 @@ def _generate_more_recipes(inventory: list[dict[str, str]], existing: list[dict[
         "recipes": _json_text(chat([
             {"role": "system", "content": "You generate varied meal recipes and reply with JSON only."},
             {"role": "user", "content": prompt},
-        ])).get("recipes", []),
+        ], max_tokens=4096)).get("recipes", []),
         "shoppingList": [],
     })
     return _remove_restricted_recipes(response, preferences)["recipes"]
