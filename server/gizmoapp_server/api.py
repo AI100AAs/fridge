@@ -52,7 +52,7 @@ def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
     if not ingredients:
         ingredients = ["eggs", "spinach", "tomatoes", "cheddar"]
 
-    core = (ingredients + ingredients[:4])[:4]
+    core = (ingredients + ingredients[:8])[:8]
     day_names = ["Mon", "Tue", "Wed", "Thu"]
     recipes = [
         {
@@ -150,12 +150,18 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw_ingredients, list):
         raise ValueError("ingredients must be a list.")
     ingredients: list[str] = []
+    ingredient_inventory: list[dict[str, str]] = []
     for item in raw_ingredients:
+        quantity = ""
+        category = "Fridge"
         if isinstance(item, dict):
+            quantity = _clean_text(item.get("quantity") or item.get("amount") or "", 30)
+            category = _clean_text(item.get("category") or "Fridge", 24) or "Fridge"
             item = item.get("name") or item.get("ingredient") or item.get("label") or ""
         text = _clean_text(item, 60)
         if text and text not in ingredients:
             ingredients.append(text)
+            ingredient_inventory.append({"name": text, "quantity": quantity, "category": category})
     if not ingredients:
         raise ValueError("ingredients must not be empty.")
 
@@ -164,7 +170,7 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("recipes must be a list.")
     recipes: list[dict[str, Any]] = []
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    for index, recipe in enumerate(raw_recipes[:7]):
+    for index, recipe in enumerate(raw_recipes[:12]):
         if not isinstance(recipe, dict):
             continue
         normalized: dict[str, Any] = {
@@ -177,7 +183,17 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 "time": _clean_text(recipe.get("time") or "30 min", 24),
             }
         if isinstance(recipe.get("ingredients"), list):
-            normalized["ingredients"] = [_clean_text(item, 80) for item in recipe["ingredients"] if str(item).strip()][:12]
+            recipe_ingredients = []
+            for item in recipe["ingredients"][:16]:
+                if isinstance(item, dict):
+                    name = _clean_text(item.get("name") or item.get("ingredient") or item.get("label") or "", 60)
+                    quantity = _clean_text(item.get("quantity") or item.get("amount") or "", 30)
+                    item = f"{quantity} {name}".strip() if name else ""
+                else:
+                    item = _clean_text(item, 80)
+                if str(item).strip():
+                    recipe_ingredients.append(str(item).strip())
+            normalized["ingredients"] = recipe_ingredients
         if isinstance(recipe.get("steps"), list):
             normalized["steps"] = [_clean_text(item, 220) for item in recipe["steps"] if str(item).strip()][:8]
         recipes.append(normalized)
@@ -209,10 +225,12 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
         )
 
     inventory = _normalize_inventory(payload.get("inventory"), ingredients)
+    if not payload.get("inventory") and ingredient_inventory:
+        inventory = ingredient_inventory
     return {
         "ingredients": ingredients[:12],
         "inventory": inventory,
-        "recipes": _rank_recipes(recipes[:7], ingredients),
+        "recipes": _rank_recipes(recipes[:12], ingredients),
         "shoppingList": shopping_list,
         "mealPlan": _normalize_meal_plan(payload.get("mealPlan")),
     }
@@ -257,9 +275,9 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
     prompt = (
         "Read this fridge photo and return one JSON object only. "
         "Use keys ingredients, recipes, and shoppingList. "
-        "ingredients must be a short list of visible ingredients. "
+        "ingredients must be a short list of visible ingredients as objects with name, quantity, and category; estimate quantity when visible and use 'unknown' when it is not. "
         "recipes must be 3 to 5 practical meals using those ingredients, ranked best first. "
-        "Each recipe should include day, title, description, time, ingredients (a list), and steps (a list). "
+        "Each recipe should include day, title, description, time, ingredients (a list of objects with name and quantity), and steps (a list). "
         "Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
         "Do not include markdown or extra commentary. "
@@ -282,6 +300,31 @@ def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict
         ]
     )
     return _remove_restricted_recipes(_normalize_plan(_json_text(response_text)), preferences)
+
+
+def _generate_more_recipes(inventory: list[dict[str, str]], existing: list[dict[str, Any]], preferences: dict[str, str]) -> list[dict[str, Any]]:
+    available = ", ".join(
+        f"{item['name']} ({item['quantity'] or 'quantity unknown'})" for item in inventory
+    ) or "No ingredients are currently listed."
+    existing_titles = ", ".join(str(recipe.get("title", "")) for recipe in existing)
+    preference_note = "; ".join(f"{key}: {value}" for key, value in preferences.items() if value) or "No dietary preferences provided."
+    prompt = (
+        "Return one JSON object only with a recipes list of exactly 4 new practical recipes. "
+        "Do not repeat these existing recipe titles: " + existing_titles + ". "
+        "Each recipe must include title, description, time, ingredients as objects with name and quantity, "
+        "and steps as a list. Use the available ingredient quantities when relevant and include pantry basics "
+        "in the ingredient quantities. Also include matchScore and matchedIngredients. "
+        f"Available inventory: {available}. User preferences: {preference_note}. No markdown."
+    )
+    response = _normalize_plan({
+        "ingredients": [item["name"] for item in inventory] or ["pantry staples"],
+        "recipes": _json_text(chat([
+            {"role": "system", "content": "You generate varied meal recipes and reply with JSON only."},
+            {"role": "user", "content": prompt},
+        ])).get("recipes", []),
+        "shoppingList": [],
+    })
+    return _remove_restricted_recipes(response, preferences)["recipes"]
 
 
 def _health_payload() -> dict[str, Any]:
@@ -449,7 +492,7 @@ def register_api_routes(app: Flask) -> None:
         plan = {
             "ingredients": [str(item).strip()[:60] for item in payload.get("ingredients", []) if str(item).strip()][:40],
             "inventory": _normalize_inventory(payload.get("inventory"), [str(item).strip() for item in payload.get("ingredients", []) if str(item).strip()][:40]),
-            "recipes": payload.get("recipes", [])[:7] if isinstance(payload.get("recipes", []), list) else [],
+            "recipes": payload.get("recipes", [])[:12] if isinstance(payload.get("recipes", []), list) else [],
             "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
             "mealPlan": _normalize_meal_plan(payload.get("mealPlan")),
             "preferences": _normalize_preferences(payload.get("preferences")),
@@ -457,6 +500,23 @@ def register_api_routes(app: Flask) -> None:
         plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])
         set_app_state(get_db(), PLANNER_KEY, plan)
         return jsonify(plan)
+
+    @app.post(scoped_path(prefix, "api/fridge/generate"))
+    def generate_recipes():
+        existing_state = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+        preferences = _normalize_preferences(existing_state.get("preferences"))
+        inventory = _normalize_inventory(existing_state.get("inventory"), existing_state.get("ingredients", []))
+        if not inventory:
+            return _error_response("Add or scan an inventory item before generating recipes", 400)
+        try:
+            new_recipes = _generate_more_recipes(inventory, existing_state.get("recipes", []), preferences)
+        except (CourseLLMError, ValueError, json.JSONDecodeError) as error:
+            return _error_response(str(error), 503)
+        plan = {**existing_state, "preferences": preferences, "inventory": inventory}
+        plan["ingredients"] = [item["name"] for item in inventory]
+        plan["recipes"] = _rank_recipes((existing_state.get("recipes", []) + new_recipes)[:12], plan["ingredients"])
+        set_app_state(get_db(), PLANNER_KEY, plan)
+        return jsonify({"plan": plan, "generated": len(new_recipes)})
 
     @app.post(scoped_path(prefix, "api/fridge/analyze"))
     def analyze_fridge():
