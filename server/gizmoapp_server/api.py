@@ -29,6 +29,13 @@ MAX_DESCRIPTION_LENGTH = 2_000
 MAX_SEARCH_QUERY_LENGTH = 200
 MAX_PHOTO_BYTES = 12 * 1_048_576
 PLANNER_KEY = "fridge-planner"
+DEFAULT_PREFERENCES = {
+    "dietaryRestrictions": "",
+    "allergies": "",
+    "preferredCuisines": "",
+    "dislikedIngredients": "",
+    "notes": "",
+}
 
 
 def _clean_text(value: object, limit: int) -> str:
@@ -209,7 +216,32 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
+def _normalize_preferences(raw: object) -> dict[str, str]:
+    source = raw if isinstance(raw, dict) else {}
+    return {key: _clean_text(source.get(key, ""), 300) for key in DEFAULT_PREFERENCES}
+
+
+def _preference_terms(value: str) -> list[str]:
+    return [term.strip().lower() for term in re.split(r",|\n|;", value) if term.strip()]
+
+
+def _remove_restricted_recipes(plan: dict[str, Any], preferences: dict[str, str]) -> dict[str, Any]:
+    excluded = _preference_terms(preferences["allergies"] + "," + preferences["dislikedIngredients"])
+    if not excluded:
+        return plan
+    safe_recipes = []
+    for recipe in plan["recipes"]:
+        text = " ".join(str(recipe.get(key, "")) for key in ("title", "description", "ingredients", "steps")).lower()
+        if not any(term in text for term in excluded):
+            safe_recipes.append(recipe)
+    if not safe_recipes:
+        raise ValueError("No safe recipes matched your current exclusions.")
+    plan["recipes"] = safe_recipes
+    return plan
+
+
+def _vision_plan(raw: bytes, mimetype: str, preferences: dict[str, str]) -> dict[str, Any]:
+    preference_note = "; ".join(f"{key}: {value}" for key, value in preferences.items() if value) or "No dietary preferences provided."
     prompt = (
         "Read this fridge photo and return one JSON object only. "
         "Use keys ingredients, recipes, and shoppingList. "
@@ -218,7 +250,9 @@ def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
         "Each recipe should include day, title, description, time, ingredients (a list), and steps (a list). "
         "Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
-        "Do not include markdown or extra commentary."
+        "Do not include markdown or extra commentary. "
+        f"Follow these user preferences exactly: {preference_note} "
+        "Never include an allergy in a recipe, even as an optional ingredient or garnish."
     )
     response_text = chat(
         [
@@ -235,7 +269,7 @@ def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
             },
         ]
     )
-    return _normalize_plan(_json_text(response_text))
+    return _remove_restricted_recipes(_normalize_plan(_json_text(response_text)), preferences)
 
 
 def _health_payload() -> dict[str, Any]:
@@ -390,7 +424,9 @@ def register_api_routes(app: Flask) -> None:
 
     @app.get(scoped_path(prefix, "api/fridge/state"))
     def fridge_state():
-        return jsonify(get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN))
+        state = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+        state.setdefault("preferences", DEFAULT_PREFERENCES.copy())
+        return jsonify(state)
 
     @app.put(scoped_path(prefix, "api/fridge/state"))
     def update_fridge_state():
@@ -402,6 +438,7 @@ def register_api_routes(app: Flask) -> None:
             "inventory": _normalize_inventory(payload.get("inventory"), [str(item).strip() for item in payload.get("ingredients", []) if str(item).strip()][:40]),
             "recipes": payload.get("recipes", [])[:7] if isinstance(payload.get("recipes", []), list) else [],
             "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
+            "preferences": _normalize_preferences(payload.get("preferences")),
         }
         plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])
         set_app_state(get_db(), PLANNER_KEY, plan)
@@ -419,10 +456,14 @@ def register_api_routes(app: Flask) -> None:
             return _error_response("That image is larger than 12 MB", 413)
         ai_used = False
         try:
-            plan = _vision_plan(raw, photo.mimetype)
+            existing = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+            preferences = _normalize_preferences(existing.get("preferences"))
+            plan = _vision_plan(raw, photo.mimetype, preferences)
+            plan["preferences"] = preferences
             ai_used = True
         except (CourseLLMError, ValueError, json.JSONDecodeError) as error:
             plan = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
+            plan["preferences"] = preferences
             fallback_reason = str(error)
         else:
             fallback_reason = None

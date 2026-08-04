@@ -14,6 +14,18 @@
   <body class="shell-body text-shell-body">
     <div class="app-frame public-frame text-frame">
         <main class="text-workspace" aria-label="Fridgeful meal planner">
+          <aside class="app-sidebar">
+            <a class="brand-lockup" href="{{ base_href }}" aria-label="Fridgeful home"><span class="brand-mark">F</span><span><strong>Fridgeful</strong><small>your kitchen, organized</small></span></a>
+            <nav class="side-nav" aria-label="Main menu">
+              <button class="nav-item active" type="button" data-view="overview"><span>⌂</span> Overview</button>
+              <button class="nav-item" type="button" data-view="inventory"><span>▦</span> Inventory</button>
+              <button class="nav-item" type="button" data-view="recipes"><span>✦</span> Recipes</button>
+              <button class="nav-item" type="button" data-view="shopping"><span>✓</span> Shopping list</button>
+              <button class="nav-item" type="button" data-view="settings"><span>⚙</span> Preferences</button>
+            </nav>
+            <div class="sidebar-note"><span class="status-dot"></span><strong>Kitchen plan</strong><small>Saved automatically</small></div>
+          </aside>
+          <section class="dashboard-content">
           <header class="app-topbar">
             <a class="brand-mark" href="{{ base_href }}" aria-label="Fridgeful home">F</a>
             <div class="brand-copy">
@@ -22,6 +34,10 @@
             </div>
             <div class="app-actions"><span class="connection-indicator"><span class="status-dot"></span> Kitchen plan</span></div>
           </header>
+          <div class="mobile-nav" aria-label="Main menu">
+            <button class="nav-item active" type="button" data-view="overview">Overview</button><button class="nav-item" type="button" data-view="inventory">Inventory</button><button class="nav-item" type="button" data-view="recipes">Recipes</button><button class="nav-item" type="button" data-view="settings">Preferences</button>
+          </div>
+          <div id="overview-view" class="dashboard-view active-view">
           <section class="hero-copy">
             <div><p class="eyebrow">Less waste. More dinner.</p><h2>Your fridge has a plan.</h2><p>Upload a quick photo and Fridgeful turns what you already have into a calm week of meals.</p></div>
             <div class="week-badge"><strong id="week-count">0</strong><span>ingredients<br>ready to use</span></div>
@@ -44,7 +60,13 @@
           </section>
            <section class="section-heading lower-heading"><div><p class="eyebrow">03 / Ranked for tonight</p><h3>Meals that make sense</h3></div><span id="plan-note" class="muted-label">Best matches first</span></section>
           <section id="recipe-list" class="recipe-grid"><div class="empty-wide">Your personalized recipes will appear here after a scan.</div></section>
-          <section class="workspace-panel shopping-card"><div class="section-heading"><div><p class="eyebrow">04 / Don't forget</p><h3>Smart shopping list</h3></div><span id="shopping-count" class="count-label">0 items</span></div><div id="shopping-list" class="shopping-list"><span class="muted-label">We’ll only add what your recipes need.</span></div></section>
+           <section class="workspace-panel shopping-card"><div class="section-heading"><div><p class="eyebrow">04 / Don't forget</p><h3>Smart shopping list</h3></div><span id="shopping-count" class="count-label">0 items</span></div><div id="shopping-list" class="shopping-list"><span class="muted-label">We’ll only add what your recipes need.</span></div></section>
+          </div>
+          <div id="inventory-view" class="dashboard-view"><section class="workspace-panel inventory-view-panel"><div class="section-heading"><div><p class="eyebrow">Your kitchen</p><h3>Inventory</h3></div><button class="text-button" id="inventory-add" type="button">+ Add item</button></div><div id="inventory-list-large" class="inventory-list-large"></div></section></div>
+          <div id="recipes-view" class="dashboard-view"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">Personalized for you</p><h3>All recipe suggestions</h3></div><span class="muted-label">Ranked by what you have</span></div><div id="recipe-list-large" class="recipe-grid"></div></section></div>
+          <div id="shopping-view" class="dashboard-view"><section class="workspace-panel"><div class="section-heading"><div><p class="eyebrow">Plan your next shop</p><h3>Shopping list</h3></div><span id="shopping-count-large" class="count-label">0 items</span></div><div id="shopping-list-large" class="shopping-list"></div></section></div>
+          <div id="settings-view" class="dashboard-view"><section class="workspace-panel settings-panel"><div class="section-heading"><div><p class="eyebrow">Personalize your plan</p><h3>Preferences</h3><p class="settings-intro">These settings guide every recipe Fridgeful suggests. Allergies are treated as strict exclusions.</p></div><span class="settings-saved" id="settings-saved">Saved automatically</span></div><form id="settings-form" class="settings-form"><label>Dietary restrictions<span>Optional</span><input id="dietary-input" type="text" maxlength="240" placeholder="e.g. vegetarian, halal, gluten-free"></label><label>Allergies <span class="strict-label">Strictly excluded</span><input id="allergies-input" type="text" maxlength="240" placeholder="e.g. peanuts, shellfish, sesame"></label><label>Preferred cuisines<span>Optional</span><input id="cuisines-input" type="text" maxlength="240" placeholder="e.g. Persian, Italian, Korean"></label><label>Disliked ingredients<span>Will be avoided</span><input id="disliked-input" type="text" maxlength="240" placeholder="e.g. cilantro, mushrooms"></label><label>Planning notes<span>Optional</span><textarea id="notes-input" maxlength="300" rows="3" placeholder="Anything else your meal planner should know?"></textarea><button class="primary-button settings-button" type="submit"><span>Save preferences</span><span aria-hidden="true">→</span></button></form></section></div>
+          </section>
         </main>
     </div>
     <div id="app-error" class="app-error" role="alert" aria-live="assertive" hidden></div>
