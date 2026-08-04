@@ -85,12 +85,20 @@ def _image_data_url(raw: bytes, mimetype: str) -> str:
 
 def _json_text(response_text: str) -> dict[str, Any]:
     stripped = response_text.strip()
+    stripped = re.sub(r"<think>.*?</think>", "", stripped, flags=re.IGNORECASE | re.DOTALL).strip()
     if stripped.startswith("```"):
         stripped = stripped.split("\n", 1)[1] if "\n" in stripped else ""
         stripped = stripped.rsplit("```", 1)[0].strip()
     if not stripped:
         raise ValueError("LLM response was empty.")
-    payload = json.loads(stripped)
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        # Reasoning models occasionally add a short preamble despite the JSON-only instruction.
+        start = stripped.find("{")
+        if start < 0:
+            raise
+        payload, _ = json.JSONDecoder().raw_decode(stripped[start:])
     if not isinstance(payload, dict):
         raise ValueError("LLM response must be a JSON object.")
     return payload
@@ -146,13 +154,12 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
     raw_recipes = payload.get("recipes", [])
     if not isinstance(raw_recipes, list):
         raise ValueError("recipes must be a list.")
-    recipes: list[dict[str, str]] = []
+    recipes: list[dict[str, Any]] = []
     day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     for index, recipe in enumerate(raw_recipes[:7]):
         if not isinstance(recipe, dict):
             continue
-        recipes.append(
-            {
+        normalized: dict[str, Any] = {
                 "day": _clean_text(recipe.get("day") or day_names[index % len(day_names)], 24),
                 "title": _clean_text(recipe.get("title") or f"Recipe {index + 1}", 80),
                 "description": _clean_text(
@@ -161,7 +168,11 @@ def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "time": _clean_text(recipe.get("time") or "30 min", 24),
             }
-        )
+        if isinstance(recipe.get("ingredients"), list):
+            normalized["ingredients"] = [_clean_text(item, 80) for item in recipe["ingredients"] if str(item).strip()][:12]
+        if isinstance(recipe.get("steps"), list):
+            normalized["steps"] = [_clean_text(item, 220) for item in recipe["steps"] if str(item).strip()][:8]
+        recipes.append(normalized)
     if not recipes:
         raise ValueError("recipes must not be empty.")
 
@@ -204,7 +215,8 @@ def _vision_plan(raw: bytes, mimetype: str) -> dict[str, Any]:
         "Use keys ingredients, recipes, and shoppingList. "
         "ingredients must be a short list of visible ingredients. "
         "recipes must be 3 to 5 practical meals using those ingredients, ranked best first. "
-        "Each recipe should include matchScore (0-100) and matchedIngredients. "
+        "Each recipe should include day, title, description, time, ingredients (a list), and steps (a list). "
+        "Also include matchScore (0-100) and matchedIngredients. "
         "shoppingList must list any missing basics as objects with name, amount, and checked false. "
         "Do not include markdown or extra commentary."
     )
@@ -409,10 +421,16 @@ def register_api_routes(app: Flask) -> None:
         try:
             plan = _vision_plan(raw, photo.mimetype)
             ai_used = True
-        except (CourseLLMError, ValueError, json.JSONDecodeError):
+        except (CourseLLMError, ValueError, json.JSONDecodeError) as error:
             plan = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
+            fallback_reason = str(error)
+        else:
+            fallback_reason = None
         set_app_state(get_db(), PLANNER_KEY, plan)
-        return jsonify({"plan": plan, "aiUsed": ai_used})
+        response = {"plan": plan, "aiUsed": ai_used}
+        if fallback_reason:
+            response["fallbackReason"] = fallback_reason
+        return jsonify(response)
 
     @app.get(scoped_path(prefix, "api/capabilities"))
     def capabilities():
