@@ -508,6 +508,7 @@ def register_api_routes(app: Flask) -> None:
             "recipes": payload.get("recipes", [])[:12] if isinstance(payload.get("recipes", []), list) else [],
             "shoppingList": payload.get("shoppingList", [])[:30] if isinstance(payload.get("shoppingList", []), list) else [],
             "mealPlan": _normalize_meal_plan(payload.get("mealPlan")),
+            "theme": "dark" if payload.get("theme") == "dark" else "light",
             "preferences": _normalize_preferences(payload.get("preferences")),
         }
         plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])
