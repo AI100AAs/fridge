@@ -79,7 +79,13 @@ function renderCalendar() {
 }
 function escapeHtml(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
 function escapeAttribute(value) { return escapeHtml(value).split(String.fromCharCode(34)).join("&quot;").split(String.fromCharCode(39)).join("&#39;"); }
-async function saveState() { try { await request("/fridge/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(state) }); } catch (_) { /* local UI remains usable if persistence is briefly unavailable */ } }
+let pendingSave = Promise.resolve();
+function saveState() {
+  const snapshot = JSON.stringify(state);
+  pendingSave = pendingSave.catch(() => {}).then(() => request("/fridge/state", { method: "PUT", keepalive: true, headers: { "Content-Type": "application/json" }, body: snapshot }));
+  pendingSave = pendingSave.catch(() => { /* local UI remains usable if persistence is briefly unavailable */ });
+  return pendingSave;
+}
 async function loadState() { try { Object.assign(state, await request("/fridge/state")); render(); } catch (_) { render(); } }
 
 function setupUpload() {

@@ -217,6 +217,37 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertEqual(state["shoppingList"], [])
         self.assertEqual(state["mealPlan"], {})
 
+    def test_fridge_state_is_available_after_a_new_page_request(self):
+        app = self.make_app()
+        client = app.test_client()
+        saved = {
+            "ingredients": ["Spinach"],
+            "inventory": [{"name": "Spinach", "quantity": "1 bag", "category": "Produce"}],
+            "recipes": [],
+            "shoppingList": [],
+            "mealPlan": {},
+            "theme": "light",
+            "preferences": {},
+        }
+
+        self.assertEqual(client.put("/api/fridge/state", json=saved).status_code, 200)
+        refreshed = client.get("/api/fridge/state").get_json()
+
+        self.assertEqual(refreshed["inventory"], saved["inventory"])
+
+    def test_state_saves_are_kept_alive_during_tab_refresh(self):
+        source = (
+            Path(__file__).parents[1]
+            / "server"
+            / "gizmoapp_server"
+            / "static"
+            / "app"
+            / "text"
+            / "main.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("keepalive: true", source)
+
     def test_response_hardening_and_request_id(self):
         app = self.make_app()
         response = app.test_client().get("/api/bootstrap")
