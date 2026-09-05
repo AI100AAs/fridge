@@ -207,6 +207,16 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertEqual(client_a.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
         self.assertNotEqual(client_b.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
 
+    def test_new_fridge_state_is_empty(self):
+        app = self.make_app()
+        state = app.test_client().get("/api/fridge/state").get_json()
+
+        self.assertEqual(state["ingredients"], [])
+        self.assertEqual(state["inventory"], [])
+        self.assertEqual(state["recipes"], [])
+        self.assertEqual(state["shoppingList"], [])
+        self.assertEqual(state["mealPlan"], {})
+
     def test_response_hardening_and_request_id(self):
         app = self.make_app()
         response = app.test_client().get("/api/bootstrap")

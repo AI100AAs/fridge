@@ -43,51 +43,6 @@ def _clean_text(value: object, limit: int) -> str:
     return str(value).strip()[:limit]
 
 
-def _starter_plan(seed_ingredients: list[str]) -> dict[str, Any]:
-    ingredients: list[str] = []
-    for item in seed_ingredients:
-        text = _clean_text(item, 60)
-        if text and text not in ingredients:
-            ingredients.append(text)
-
-    if not ingredients:
-        ingredients = ["eggs", "spinach", "tomatoes", "cheddar"]
-
-    core = (ingredients + ingredients[:8])[:8]
-    day_names = ["Mon", "Tue", "Wed", "Thu"]
-    recipes = [
-        {
-            "day": day_names[index],
-            "title": f"{core[index % len(core)].title()} {suffix}",
-            "description": description.format(ingredient=core[index % len(core)]),
-            "time": time,
-            "difficulty": ["easy", "medium", "hard", "easy"][index],
-        }
-        for index, (suffix, description, time) in enumerate(
-            [
-                ("Breakfast Hash", "A quick skillet using {ingredient} and pantry basics.", "20 min"),
-                ("Lunch Bowl", "A flexible bowl built around {ingredient} and fresh greens.", "25 min"),
-                ("Dinner Bake", "A warm bake that stretches {ingredient} into a full meal.", "35 min"),
-                ("Snacks", "An easy snack or side that helps use up {ingredient}.", "10 min"),
-            ]
-        )
-    ]
-    recipes = _rank_recipes(recipes, ingredients)
-    shopping_list = [
-        {"name": "olive oil", "amount": "1 bottle", "checked": False},
-        {"name": "onion", "amount": "2", "checked": False},
-        {"name": "garlic", "amount": "1 bulb", "checked": False},
-        {"name": "bread", "amount": "1 loaf", "checked": False},
-    ]
-    return {
-        "ingredients": ingredients[:12],
-        "inventory": [{"name": item, "quantity": "", "category": "Fridge"} for item in ingredients[:12]],
-        "recipes": recipes[:4],
-        "shoppingList": shopping_list,
-        "mealPlan": {},
-    }
-
-
 def _image_data_url(raw: bytes, mimetype: str) -> str:
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{mimetype};base64,{encoded}"
@@ -148,7 +103,13 @@ def _normalize_inventory(raw_inventory: object, ingredients: list[str]) -> list[
     return inventory[:40]
 
 
-DEFAULT_PLAN = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
+DEFAULT_PLAN = {
+    "ingredients": [],
+    "inventory": [],
+    "recipes": [],
+    "shoppingList": [],
+    "mealPlan": {},
+}
 
 
 def _normalize_plan(payload: dict[str, Any]) -> dict[str, Any]:
@@ -560,8 +521,7 @@ def register_api_routes(app: Flask) -> None:
             plan["preferences"] = preferences
             ai_used = True
         except (CourseLLMError, ValueError, json.JSONDecodeError) as error:
-            plan = _starter_plan(["eggs", "spinach", "tomatoes", "cheddar"])
-            plan["preferences"] = preferences
+            plan = {**DEFAULT_PLAN, "preferences": preferences}
             fallback_reason = str(error)
         else:
             fallback_reason = None
