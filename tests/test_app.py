@@ -247,6 +247,14 @@ class GizmoAppTestCase(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("keepalive: true", source)
+        self.assertIn('credentials: "include"', source)
+
+    def test_production_sessions_support_sandboxed_iframes(self):
+        app = self.make_app(SESSION_COOKIE_SAMESITE="None", SESSION_COOKIE_SECURE=True)
+        cookie = app.test_client().get("/api/fridge/state").headers["Set-Cookie"]
+
+        self.assertIn("SameSite=None", cookie)
+        self.assertIn("Secure", cookie)
 
     def test_response_hardening_and_request_id(self):
         app = self.make_app()

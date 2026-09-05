@@ -7,7 +7,7 @@ async function request(path, options = {}) {
   options.headers = headers;
   let response;
   try {
-    response = await fetch(`${apiBase()}${path}`, options);
+    response = await fetch(`${apiBase()}${path}`, { credentials: "include", ...options });
   } catch (_) {
     throw new Error("The app could not reach its server. Check your connection and try again.");
   }

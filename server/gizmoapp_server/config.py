@@ -216,6 +216,10 @@ def load_settings(shell_variant: str | None = None, repo_root: Path | None = Non
         "REPO_ROOT": repo_root,
         "STATIC_ROOT": static_dir,
         "SECRET_KEY": secret_key,
+        # The hosted app runs inside a sandboxed iframe, where the session
+        # cookie must be available to credentialed cross-origin API requests.
+        "SESSION_COOKIE_SAMESITE": "None" if app_environment == "production" else "Lax",
+        "SESSION_COOKIE_SECURE": app_environment == "production",
         "AUTO_MIGRATE": _parse_bool(
             environ.get("GIZMOAPP_AUTO_MIGRATE"),
             name="GIZMOAPP_AUTO_MIGRATE",
