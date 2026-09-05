@@ -228,6 +228,13 @@ class GizmoAppTestCase(unittest.TestCase):
                 self.assertNotIn("manifest.webmanifest", html)
                 self.tearDown()
 
+    def test_text_shell_does_not_expose_manual_user_selector(self):
+        app = self.make_app(shell_variant="text")
+        html = app.test_client().get("/").get_data(as_text=True)
+
+        self.assertNotIn('id="user-form"', html)
+        self.assertNotIn('id="user-id"', html)
+
     def test_error_boundary_ignores_benign_resize_observer_notifications(self):
         boot_source = (
             Path(__file__).parents[1]

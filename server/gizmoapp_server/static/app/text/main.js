@@ -2,6 +2,23 @@ const state = { ingredients: [], inventory: [], recipes: [], shoppingList: [], m
 let inventoryQuery = "";
 let userId = "";
 
+function setupUserIdentity() {
+  const savedIdentity = new URLSearchParams(window.location.hash.slice(1)).get("profile");
+  if (savedIdentity && /^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$/.test(savedIdentity)) {
+    userId = savedIdentity;
+    return;
+  }
+
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  userId = `guest-${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+  try {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#profile=${userId}`);
+  } catch (_) {
+    window.location.hash = `profile=${userId}`;
+  }
+}
+
 function apiBase() { return window.GizmoAppRuntime.readConfig().apiBase; }
 async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -114,7 +131,6 @@ function setupRecipeActions() {
 }
  function setupShopping() { document.querySelector("#shopping-form").addEventListener("submit", (event) => { event.preventDefault(); const name = document.querySelector("#shopping-item-input"); const amount = document.querySelector("#shopping-amount-input"); const category = document.querySelector("#shopping-category-input"); if (!name.value.trim()) return; state.shoppingList.push({ name: name.value.trim(), amount: amount.value.trim(), category: category.value, checked: false }); name.value = ""; amount.value = ""; saveState(); render(); name.focus(); }); document.querySelector("#clear-completed").addEventListener("click", () => { const completedCount = state.shoppingList.filter((item) => item.checked).length; if (!completedCount) return; state.shoppingList = state.shoppingList.filter((item) => !item.checked); saveState(); render(); document.querySelector("#shopping-status").textContent = `${completedCount} completed item${completedCount === 1 ? "" : "s"} cleared.`; }); }
 function setupSettings() { document.querySelector("#settings-form").addEventListener("submit", (event) => { event.preventDefault(); state.preferences = { dietaryRestrictions: document.querySelector("#dietary-input").value.trim(), allergies: document.querySelector("#allergies-input").value.trim(), preferredCuisines: document.querySelector("#cuisines-input").value.trim(), dislikedIngredients: document.querySelector("#disliked-input").value.trim(), servingSize: document.querySelector("#serving-size-input").value.trim(), notes: document.querySelector("#notes-input").value.trim() }; saveState(); document.querySelector("#settings-saved").textContent = "Preferences saved"; }); }
-function setupUser() { document.querySelector("#user-form").addEventListener("submit", async (event) => { event.preventDefault(); const input = document.querySelector("#user-id"); const nextUserId = input.value.trim(); if (!input.checkValidity()) { input.reportValidity(); return; } userId = nextUserId; await loadState(); render(); }); }
-  function setupTheme() { const button = document.querySelector("#theme-toggle"); const applyTheme = () => { const dark = state.theme === "dark"; document.body.classList.toggle("dark-mode", dark); button.setAttribute("aria-pressed", String(dark)); button.textContent = dark ? "Light mode" : "Dark mode"; }; button.addEventListener("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; applyTheme(); saveState(); }); applyTheme(); return applyTheme; }
-  function bootstrap() { if (!window.GizmoAppRuntime) throw new Error("The shared app runtime did not load."); window.GizmoAppRuntime.readConfig(); setupUpload(); setupAddIngredient(); setupNavigation(); setupRecipeActions(); setupShopping(); setupSettings(); setupUser(); const applyTheme = setupTheme(); render(); applyTheme(); window.GizmoAppRuntime.markReady(); }
-try { bootstrap(); } catch (error) { window.GizmoAppRuntime?.showFatalError(error); }
+function setupTheme() { const button = document.querySelector("#theme-toggle"); const applyTheme = () => { const dark = state.theme === "dark"; document.body.classList.toggle("dark-mode", dark); button.setAttribute("aria-pressed", String(dark)); button.textContent = dark ? "Light mode" : "Dark mode"; }; button.addEventListener("click", () => { state.theme = state.theme === "dark" ? "light" : "dark"; applyTheme(); saveState(); }); applyTheme(); return applyTheme; }
+  async function bootstrap() { if (!window.GizmoAppRuntime) throw new Error("The shared app runtime did not load."); window.GizmoAppRuntime.readConfig(); setupUserIdentity(); setupUpload(); setupAddIngredient(); setupNavigation(); setupRecipeActions(); setupShopping(); setupSettings(); const applyTheme = setupTheme(); await loadState(); render(); applyTheme(); window.GizmoAppRuntime.markReady(); }
+bootstrap().catch((error) => window.GizmoAppRuntime?.showFatalError(error));
