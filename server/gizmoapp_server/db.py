@@ -38,6 +38,22 @@ CREATE TABLE IF NOT EXISTS app_events (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """,
+    3: """
+ALTER TABLE app_state RENAME TO app_state_legacy;
+
+CREATE TABLE app_state (
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, key)
+);
+
+INSERT INTO app_state (user_id, key, value_json, updated_at)
+SELECT 'legacy', key, value_json, updated_at FROM app_state_legacy;
+
+DROP TABLE app_state_legacy;
+""",
 }
 LATEST_SCHEMA_VERSION = max(SCHEMA_MIGRATIONS)
 BUSY_TIMEOUT_MS = 10_000
@@ -259,8 +275,11 @@ def database_summary(config: dict) -> dict[str, Any]:
     }
 
 
-def get_app_state(connection: sqlite3.Connection, key: str, default: dict[str, Any]) -> dict[str, Any]:
-    row = connection.execute("SELECT value_json FROM app_state WHERE key = ?", (key,)).fetchone()
+def get_app_state(connection: sqlite3.Connection, user_id: str, key: str, default: dict[str, Any]) -> dict[str, Any]:
+    row = connection.execute(
+        "SELECT value_json FROM app_state WHERE user_id = ? AND key = ?",
+        (user_id, key),
+    ).fetchone()
     if row is None:
         return default
     try:
@@ -270,9 +289,9 @@ def get_app_state(connection: sqlite3.Connection, key: str, default: dict[str, A
     return value if isinstance(value, dict) else default
 
 
-def set_app_state(connection: sqlite3.Connection, key: str, value: dict[str, Any]) -> None:
+def set_app_state(connection: sqlite3.Connection, user_id: str, key: str, value: dict[str, Any]) -> None:
     connection.execute(
-        "INSERT INTO app_state (key, value_json) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP",
-        (key, json.dumps(value)),
+        "INSERT INTO app_state (user_id, key, value_json) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP",
+        (user_id, key, json.dumps(value)),
     )
     connection.commit()

@@ -55,7 +55,7 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertEqual(bootstrap.get_json()["app"]["shell"], "graphical")
         self.assertEqual(ready.status_code, 200)
         self.assertEqual(ready.get_json()["status"], "ready")
-        self.assertEqual(ready.get_json()["schemaVersion"], 2)
+        self.assertEqual(ready.get_json()["schemaVersion"], 3)
 
     def test_optional_routes_are_disabled_by_default(self):
         app = self.make_app(enabled_features=frozenset())
@@ -178,6 +178,7 @@ class GizmoAppTestCase(unittest.TestCase):
         with patch("server.gizmoapp_server.api.chat", return_value=response_body) as chat:
             response = client.post(
                 "/api/fridge/analyze",
+                headers={"X-User-ID": "test-user"},
                 data={"photo": (io.BytesIO(b"fake image bytes"), "fridge.png", "image/png")},
             )
 
@@ -185,8 +186,29 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertTrue(response.get_json()["aiUsed"])
         self.assertEqual(response.get_json()["plan"]["ingredients"], ["eggs", "spinach"])
         self.assertGreaterEqual(chat.call_count, 1)
-        saved = client.get("/api/fridge/state").get_json()
+        saved = client.get("/api/fridge/state", headers={"X-User-ID": "test-user"}).get_json()
         self.assertEqual(saved["ingredients"], ["eggs", "spinach"])
+
+    def test_fridge_state_is_isolated_by_user(self):
+        app = self.make_app()
+        client = app.test_client()
+        user_a = {"X-User-ID": "alice"}
+        user_b = {"X-User-ID": "bob"}
+
+        response = client.put(
+            "/api/fridge/state",
+            headers=user_a,
+            json={
+                "ingredients": ["tofu"],
+                "inventory": [{"name": "tofu", "quantity": "1 block", "category": "Fridge"}],
+                "recipes": [],
+                "shoppingList": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(client.get("/api/fridge/state", headers=user_a).get_json()["ingredients"], ["tofu"])
+        self.assertNotEqual(client.get("/api/fridge/state", headers=user_b).get_json()["ingredients"], ["tofu"])
 
     def test_response_hardening_and_request_id(self):
         app = self.make_app()

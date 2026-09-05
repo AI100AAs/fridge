@@ -24,6 +24,7 @@ from .llm import CourseLLMError, chat
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 SLUG_RE = re.compile(r"^[a-z0-9-]{3,40}$")
+USER_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$")
 MAX_LABEL_LENGTH = 120
 MAX_DESCRIPTION_LENGTH = 2_000
 MAX_SEARCH_QUERY_LENGTH = 200
@@ -347,6 +348,13 @@ def _health_payload() -> dict[str, Any]:
     }
 
 
+def _current_user_id() -> str:
+    user_id = request.headers.get("X-User-ID", "").strip()
+    if not USER_ID_RE.fullmatch(user_id):
+        raise BadRequest("X-User-ID must be 3-64 letters, numbers, hyphens, or underscores")
+    return user_id
+
+
 def _bootstrap_payload() -> dict[str, Any]:
     return {
         "app": {
@@ -492,13 +500,14 @@ def register_api_routes(app: Flask) -> None:
 
     @app.get(scoped_path(prefix, "api/fridge/state"))
     def fridge_state():
-        state = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+        state = get_app_state(get_db(), _current_user_id(), PLANNER_KEY, DEFAULT_PLAN)
         state.setdefault("preferences", DEFAULT_PREFERENCES.copy())
         state.setdefault("mealPlan", {})
         return jsonify(state)
 
     @app.put(scoped_path(prefix, "api/fridge/state"))
     def update_fridge_state():
+        user_id = _current_user_id()
         payload, error = _json_object()
         if error:
             return error
@@ -512,12 +521,13 @@ def register_api_routes(app: Flask) -> None:
             "preferences": _normalize_preferences(payload.get("preferences")),
         }
         plan["recipes"] = _rank_recipes(plan["recipes"], plan["ingredients"])
-        set_app_state(get_db(), PLANNER_KEY, plan)
+        set_app_state(get_db(), user_id, PLANNER_KEY, plan)
         return jsonify(plan)
 
     @app.post(scoped_path(prefix, "api/fridge/generate"))
     def generate_recipes():
-        existing_state = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+        user_id = _current_user_id()
+        existing_state = get_app_state(get_db(), user_id, PLANNER_KEY, DEFAULT_PLAN)
         preferences = _normalize_preferences(existing_state.get("preferences"))
         inventory = _normalize_inventory(existing_state.get("inventory"), existing_state.get("ingredients", []))
         if not inventory:
@@ -529,11 +539,12 @@ def register_api_routes(app: Flask) -> None:
         plan = {**existing_state, "preferences": preferences, "inventory": inventory}
         plan["ingredients"] = [item["name"] for item in inventory]
         plan["recipes"] = _rank_recipes((existing_state.get("recipes", []) + new_recipes)[:12], plan["ingredients"])
-        set_app_state(get_db(), PLANNER_KEY, plan)
+        set_app_state(get_db(), user_id, PLANNER_KEY, plan)
         return jsonify({"plan": plan, "generated": len(new_recipes)})
 
     @app.post(scoped_path(prefix, "api/fridge/analyze"))
     def analyze_fridge():
+        user_id = _current_user_id()
         photo = request.files.get("photo")
         if photo is None or not photo.filename:
             return _error_response("Please choose a fridge photo first", 400)
@@ -544,7 +555,7 @@ def register_api_routes(app: Flask) -> None:
             return _error_response("That image is larger than 12 MB", 413)
         ai_used = False
         try:
-            existing = get_app_state(get_db(), PLANNER_KEY, DEFAULT_PLAN)
+            existing = get_app_state(get_db(), user_id, PLANNER_KEY, DEFAULT_PLAN)
             preferences = _normalize_preferences(existing.get("preferences"))
             plan = _vision_plan(raw, photo.mimetype, preferences)
             plan["preferences"] = preferences
@@ -555,7 +566,7 @@ def register_api_routes(app: Flask) -> None:
             fallback_reason = str(error)
         else:
             fallback_reason = None
-        set_app_state(get_db(), PLANNER_KEY, plan)
+        set_app_state(get_db(), user_id, PLANNER_KEY, plan)
         response = {"plan": plan, "aiUsed": ai_used}
         if fallback_reason:
             response["fallbackReason"] = fallback_reason
