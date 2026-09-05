@@ -169,6 +169,7 @@ class GizmoAppTestCase(unittest.TestCase):
     def test_fridge_analyze_uses_llm_plan_shape(self):
         app = self.make_app()
         client = app.test_client()
+        user_url = "?user=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         response_body = (
             '{"ingredients":["eggs","spinach"],'
             '"recipes":[{"day":"Mon","title":"Eggs on Toast","description":"Use eggs and spinach.","time":"20 min"}],'
@@ -177,7 +178,7 @@ class GizmoAppTestCase(unittest.TestCase):
 
         with patch("server.gizmoapp_server.api.chat", return_value=response_body) as chat:
             response = client.post(
-                "/api/fridge/analyze",
+                f"/api/fridge/analyze{user_url}",
                 data={"photo": (io.BytesIO(b"fake image bytes"), "fridge.png", "image/png")},
             )
 
@@ -185,16 +186,18 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertTrue(response.get_json()["aiUsed"])
         self.assertEqual(response.get_json()["plan"]["ingredients"], ["eggs", "spinach"])
         self.assertGreaterEqual(chat.call_count, 1)
-        saved = client.get("/api/fridge/state").get_json()
+        saved = client.get(f"/api/fridge/state{user_url}").get_json()
         self.assertEqual(saved["ingredients"], ["eggs", "spinach"])
 
     def test_fridge_state_is_isolated_by_user(self):
         app = self.make_app()
         client_a = app.test_client()
         client_b = app.test_client()
+        user_a = "?user=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        user_b = "?user=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
         response = client_a.put(
-            "/api/fridge/state",
+            f"/api/fridge/state{user_a}",
             json={
                 "ingredients": ["tofu"],
                 "inventory": [{"name": "tofu", "quantity": "1 block", "category": "Fridge"}],
@@ -204,12 +207,12 @@ class GizmoAppTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(client_a.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
-        self.assertNotEqual(client_b.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
+        self.assertEqual(client_a.get(f"/api/fridge/state{user_a}").get_json()["ingredients"], ["tofu"])
+        self.assertNotEqual(client_b.get(f"/api/fridge/state{user_b}").get_json()["ingredients"], ["tofu"])
 
     def test_new_fridge_state_is_empty(self):
         app = self.make_app()
-        state = app.test_client().get("/api/fridge/state").get_json()
+        state = app.test_client().get("/api/fridge/state?user=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").get_json()
 
         self.assertEqual(state["ingredients"], [])
         self.assertEqual(state["inventory"], [])
@@ -220,6 +223,7 @@ class GizmoAppTestCase(unittest.TestCase):
     def test_fridge_state_is_available_after_a_new_page_request(self):
         app = self.make_app()
         client = app.test_client()
+        user_url = "?user=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         saved = {
             "ingredients": ["Spinach"],
             "inventory": [{"name": "Spinach", "quantity": "1 bag", "category": "Produce"}],
@@ -230,8 +234,8 @@ class GizmoAppTestCase(unittest.TestCase):
             "preferences": {},
         }
 
-        self.assertEqual(client.put("/api/fridge/state", json=saved).status_code, 200)
-        refreshed = client.get("/api/fridge/state").get_json()
+        self.assertEqual(client.put(f"/api/fridge/state{user_url}", json=saved).status_code, 200)
+        refreshed = client.get(f"/api/fridge/state{user_url}").get_json()
 
         self.assertEqual(refreshed["inventory"], saved["inventory"])
 
@@ -247,14 +251,14 @@ class GizmoAppTestCase(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("keepalive: true", source)
-        self.assertIn('credentials: "include"', source)
+        self.assertIn("userQuery()", source)
 
-    def test_production_sessions_support_sandboxed_iframes(self):
-        app = self.make_app(SESSION_COOKIE_SAMESITE="None", SESSION_COOKIE_SECURE=True)
-        cookie = app.test_client().get("/api/fridge/state").headers["Set-Cookie"]
+    def test_state_requests_require_url_identity(self):
+        app = self.make_app()
+        response = app.test_client().get("/api/fridge/state")
 
-        self.assertIn("SameSite=None", cookie)
-        self.assertIn("Secure", cookie)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("URL identifier", response.get_json()["errors"][0])
 
     def test_response_hardening_and_request_id(self):
         app = self.make_app()
@@ -268,7 +272,7 @@ class GizmoAppTestCase(unittest.TestCase):
         for shell in ("graphical", "text"):
             with self.subTest(shell=shell):
                 app = self.make_app(shell_variant=shell)
-                html = app.test_client().get("/").get_data(as_text=True)
+                html = app.test_client().get("/", follow_redirects=True).get_data(as_text=True)
                 self.assertIn('id="app-error"', html)
                 self.assertIn("boot.js", html)
                 self.assertNotIn("manifest.webmanifest", html)
@@ -276,21 +280,21 @@ class GizmoAppTestCase(unittest.TestCase):
 
     def test_text_shell_does_not_expose_manual_user_selector(self):
         app = self.make_app(shell_variant="text")
-        html = app.test_client().get("/").get_data(as_text=True)
+        html = app.test_client().get("/", follow_redirects=True).get_data(as_text=True)
 
         self.assertNotIn('id="user-form"', html)
         self.assertNotIn('id="user-id"', html)
 
-    def test_identity_is_server_issued_and_not_exposed_in_page_or_header(self):
+    def test_identity_is_server_issued_in_url_and_not_exposed_in_ui(self):
         app = self.make_app(shell_variant="text")
         client = app.test_client()
 
         page = client.get("/")
-        state = client.get("/api/fridge/state")
+        location = page.headers["Location"]
+        state = client.get(f"/api/fridge/state?{location.split('?', 1)[1]}")
 
-        self.assertEqual(page.status_code, 200)
-        self.assertIn("session=", page.headers.get("Set-Cookie", ""))
-        self.assertIn("Expires=", page.headers.get("Set-Cookie", ""))
+        self.assertEqual(page.status_code, 302)
+        self.assertRegex(location, r"\?user=[0-9a-f]{32}$")
         self.assertEqual(state.status_code, 200)
         self.assertNotIn("X-User-ID", page.get_data(as_text=True))
         self.assertNotIn("profile=", page.get_data(as_text=True))

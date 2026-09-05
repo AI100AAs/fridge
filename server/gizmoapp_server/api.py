@@ -9,7 +9,7 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
-from flask import Flask, current_app, g, jsonify, request, session
+from flask import Flask, current_app, g, jsonify, request
 from werkzeug.exceptions import BadRequest, HTTPException, RequestEntityTooLarge, UnsupportedMediaType
 
 from .capabilities import capability_payload
@@ -24,6 +24,7 @@ from .llm import CourseLLMError, chat
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 SLUG_RE = re.compile(r"^[a-z0-9-]{3,40}$")
+USER_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 MAX_LABEL_LENGTH = 120
 MAX_DESCRIPTION_LENGTH = 2_000
 MAX_SEARCH_QUERY_LENGTH = 200
@@ -309,7 +310,10 @@ def _health_payload() -> dict[str, Any]:
 
 
 def _current_user_id() -> str:
-    return session["guest_id"]
+    user_id = request.args.get("user", "")
+    if not USER_ID_RE.fullmatch(user_id):
+        raise BadRequest("A valid user URL identifier is required")
+    return user_id
 
 
 def _bootstrap_payload() -> dict[str, Any]:
@@ -414,9 +418,6 @@ def register_api_routes(app: Flask) -> None:
     @app.before_request
     def assign_request_id():
         g.request_id = secrets.token_hex(8)
-        if "guest_id" not in session:
-            session["guest_id"] = f"guest-{secrets.token_hex(16)}"
-            session.permanent = True
 
     @app.after_request
     def harden_response(response):

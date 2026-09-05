@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 
-from flask import Flask, abort, current_app, render_template, send_from_directory
+from flask import Flask, abort, current_app, redirect, render_template, request, send_from_directory
 
 from .config import scoped_path
 from .db import database_summary, fetch_sample_nodes, get_db
+
+
+def _new_user_id() -> str:
+    return secrets.token_hex(16)
 
 
 def _root_path() -> str:
@@ -67,15 +72,20 @@ def register_page_routes(app: Flask) -> None:
         if path and path.split("/", 1)[0] in reserved_top_level:
             abort(404)
 
+        user_id = request.args.get("user", "")
+        if not user_id or len(user_id) != 32 or any(character not in "0123456789abcdef" for character in user_id):
+            return redirect(f"{root_path}?user={_new_user_id()}")
+        page_root = f"{root_path}?user={user_id}"
+
         return render_template(
             current_app.config["APP_SHELL_TEMPLATE"],
             app_name=current_app.config["APP_NAME"],
             app_tagline=current_app.config["APP_TAGLINE"],
             shell_description=current_app.config["APP_SHELL_DESCRIPTION"],
-            base_href=root_path,
+            base_href=page_root,
             shared_asset_base=scoped_path(prefix, "app/"),
             asset_base=scoped_path(prefix, current_app.config["APP_SHELL_ASSET_SUBPATH"]),
             icon_url=scoped_path(prefix, "icons/icon-192.png"),
             theme_color=current_app.config["THEME_COLOR"],
-            client_config=_client_config(),
+            client_config={**_client_config(), "userId": user_id},
         )

@@ -2,13 +2,20 @@ function runtimeTimeout() {
   return window.GizmoAppRuntime?.readConfig().requestTimeoutMs || 15000;
 }
 
+function userUrl(url) {
+  const userId = window.GizmoAppRuntime?.readConfig().userId;
+  if (!userId) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}user=${encodeURIComponent(userId)}`;
+}
+
 
 export async function requestJson(url, options = {}) {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs || runtimeTimeout();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
+    const response = await fetch(userUrl(url), {
       ...options,
       signal: controller.signal,
       headers: {

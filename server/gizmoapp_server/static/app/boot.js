@@ -37,7 +37,7 @@
       throw new Error("The page is missing its runtime configuration.");
     }
     const config = JSON.parse(raw.textContent || "{}");
-    if (!config.apiBase || !Number.isFinite(config.requestTimeoutMs)) {
+    if (!config.apiBase || !config.userId || !Number.isFinite(config.requestTimeoutMs)) {
       throw new Error("The page runtime configuration is incomplete.");
     }
     return config;

@@ -2,12 +2,13 @@ const state = { ingredients: [], inventory: [], recipes: [], shoppingList: [], m
 let inventoryQuery = "";
 
 function apiBase() { return window.GizmoAppRuntime.readConfig().apiBase; }
+function userQuery() { return `?user=${encodeURIComponent(window.GizmoAppRuntime.readConfig().userId)}`; }
 async function request(path, options = {}) {
   const headers = new Headers(options.headers || {});
   options.headers = headers;
   let response;
   try {
-    response = await fetch(`${apiBase()}${path}`, { credentials: "include", ...options });
+    response = await fetch(`${apiBase()}${path}${userQuery()}`, { ...options });
   } catch (_) {
     throw new Error("The app could not reach its server. Check your connection and try again.");
   }
