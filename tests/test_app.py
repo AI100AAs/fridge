@@ -178,7 +178,6 @@ class GizmoAppTestCase(unittest.TestCase):
         with patch("server.gizmoapp_server.api.chat", return_value=response_body) as chat:
             response = client.post(
                 "/api/fridge/analyze",
-                headers={"X-User-ID": "test-user"},
                 data={"photo": (io.BytesIO(b"fake image bytes"), "fridge.png", "image/png")},
             )
 
@@ -186,18 +185,16 @@ class GizmoAppTestCase(unittest.TestCase):
         self.assertTrue(response.get_json()["aiUsed"])
         self.assertEqual(response.get_json()["plan"]["ingredients"], ["eggs", "spinach"])
         self.assertGreaterEqual(chat.call_count, 1)
-        saved = client.get("/api/fridge/state", headers={"X-User-ID": "test-user"}).get_json()
+        saved = client.get("/api/fridge/state").get_json()
         self.assertEqual(saved["ingredients"], ["eggs", "spinach"])
 
     def test_fridge_state_is_isolated_by_user(self):
         app = self.make_app()
-        client = app.test_client()
-        user_a = {"X-User-ID": "alice"}
-        user_b = {"X-User-ID": "bob"}
+        client_a = app.test_client()
+        client_b = app.test_client()
 
-        response = client.put(
+        response = client_a.put(
             "/api/fridge/state",
-            headers=user_a,
             json={
                 "ingredients": ["tofu"],
                 "inventory": [{"name": "tofu", "quantity": "1 block", "category": "Fridge"}],
@@ -207,8 +204,8 @@ class GizmoAppTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(client.get("/api/fridge/state", headers=user_a).get_json()["ingredients"], ["tofu"])
-        self.assertNotEqual(client.get("/api/fridge/state", headers=user_b).get_json()["ingredients"], ["tofu"])
+        self.assertEqual(client_a.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
+        self.assertNotEqual(client_b.get("/api/fridge/state").get_json()["ingredients"], ["tofu"])
 
     def test_response_hardening_and_request_id(self):
         app = self.make_app()
@@ -234,6 +231,20 @@ class GizmoAppTestCase(unittest.TestCase):
 
         self.assertNotIn('id="user-form"', html)
         self.assertNotIn('id="user-id"', html)
+
+    def test_identity_is_server_issued_and_not_exposed_in_page_or_header(self):
+        app = self.make_app(shell_variant="text")
+        client = app.test_client()
+
+        page = client.get("/")
+        state = client.get("/api/fridge/state")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("session=", page.headers.get("Set-Cookie", ""))
+        self.assertIn("Expires=", page.headers.get("Set-Cookie", ""))
+        self.assertEqual(state.status_code, 200)
+        self.assertNotIn("X-User-ID", page.get_data(as_text=True))
+        self.assertNotIn("profile=", page.get_data(as_text=True))
 
     def test_error_boundary_ignores_benign_resize_observer_notifications(self):
         boot_source = (
